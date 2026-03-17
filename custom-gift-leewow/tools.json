@@ -1,0 +1,57 @@
+{
+  "tools": [
+    {
+      "name": "browse_templates",
+      "description": "Browse Leewow customizable product templates. Returns Markdown cards with images, names, prices, and template IDs.",
+      "executor": "bash",
+      "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}}",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "Optional category filter (e.g. 'bag', 'accessory', 'home', 'apparel'). Leave empty to browse all.",
+            "default": ""
+          },
+          "count": {
+            "type": "integer",
+            "description": "Number of templates to return (1-5)",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 5
+          }
+        }
+      }
+    },
+    {
+      "name": "generate_preview",
+      "description": "Upload a design image and generate a customized product mockup. Returns a preview URL where the user can view the AI-generated result and place an order.",
+      "executor": "bash",
+      "command": "python3 scripts/generate.py --image-path '{{image_path}}' --template-id {{template_id}} --design-theme '{{design_theme}}' --aspect-ratio '{{aspect_ratio}}'",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "image_path": {
+            "type": "string",
+            "description": "Local file path of the design image"
+          },
+          "template_id": {
+            "type": "integer",
+            "description": "Product template ID (from browse_templates results)"
+          },
+          "design_theme": {
+            "type": "string",
+            "description": "Design theme or style description (e.g. 'cute cartoon', 'minimalist')",
+            "default": ""
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "description": "Aspect ratio: '3:4', '1:1', '4:3'",
+            "default": "3:4"
+          }
+        },
+        "required": ["image_path", "template_id"]
+      }
+    }
+  ]
+}
