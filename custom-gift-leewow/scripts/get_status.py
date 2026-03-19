@@ -40,7 +40,7 @@ def get_task_status(task_id: str, download_image: bool = True) -> dict:
     if not CLAW_SK:
         return {"error": "CLAW_SK environment variable is not set."}
 
-    url = f"{CLAW_BASE_URL}{CLAW_PATH_PREFIX}/claw/generate/{task_id}"
+    url = f"{CLAW_BASE_URL}{CLAW_PATH_PREFIX}/claw/task/{task_id}"
     
     try:
         resp = claw_get(CLAW_SK, url, timeout=15)
