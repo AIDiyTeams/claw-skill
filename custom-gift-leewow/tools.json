@@ -27,7 +27,7 @@
       "name": "generate_preview",
       "description": "Upload a design image and generate a customized product mockup. IMPORTANT: image_path must be in workspace directory (~/.openclaw/workspace/). Returns taskId for status polling.",
       "executor": "bash",
-      "command": "python3 scripts/generate.py --image-path '{{image_path}}' --template-id {{template_id}} --design-theme '{{design_theme}}' --aspect-ratio '{{aspect_ratio}}'",
+      "command": "python3 scripts/generate.py --image-path '{{image_path}}' --template-id {{template_id}} --design-theme '{{design_theme}}' --aspect-ratio '{{aspect_ratio}}' --json",
       "parameters": {
         "type": "object",
         "properties": {
@@ -77,6 +77,27 @@
           }
         },
         "required": ["task_id"]
+      }
+    },
+    {
+      "name": "cos_presign_url",
+      "description": "Generate a presigned URL for accessing COS (Tencent Cloud Object Storage) images. Useful for private buckets or when images need temporary access tokens.",
+      "executor": "bash",
+      "command": "python3 scripts/cos_presign.py '{{cos_url}}' --expired {{expired}} --json",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cos_url": {
+            "type": "string",
+            "description": "COS URL to generate presigned URL for (e.g., https://bucket.cos.region.myqcloud.com/key.png)"
+          },
+          "expired": {
+            "type": "integer",
+            "description": "URL expiration time in seconds (default: 3600 = 1 hour)",
+            "default": 3600
+          }
+        },
+        "required": ["cos_url"]
       }
     }
   ]

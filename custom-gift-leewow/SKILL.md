@@ -57,6 +57,22 @@ LEEWOW_API_BASE=https://leewow.com
 - Filename format: `leewow_preview_{taskId}.{ext}`
 - The agent can directly display these images to users
 
+### COS Presigned URLs
+For private COS buckets, you may need to generate **presigned URLs** for accessing images:
+
+```bash
+# Generate presigned URL for a COS image
+python3 scripts/cos_presign.py "https://bucket.cos.region.myqcloud.com/key.png" --json
+
+# With custom expiration (e.g., 1 hour = 3600 seconds)
+python3 scripts/cos_presign.py "COS_URL" --expired 3600
+
+# Use with get_status to get presigned preview URL
+python3 scripts/get_status.py {taskId} --presign --json
+```
+
+**Note**: Most Leewow COS buckets are public, so presigned URLs are optional.
+
 ## Typical Flow
 
 1. **Browse** — Use `browse_templates` to show available products

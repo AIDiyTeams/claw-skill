@@ -35,8 +35,38 @@ CLAW_SK = os.getenv("CLAW_SK", "")
 WORKSPACE_DIR = os.path.expanduser("~/.openclaw/workspace")
 
 
-def get_task_status(task_id: str, download_image: bool = True) -> dict:
-    """Query task status and optionally download preview image."""
+def _generate_presigned_url_if_needed(image_url: str, expired: int = 3600) -> str:
+    """Generate presigned URL for COS objects if necessary.
+    
+    For public COS buckets, the original URL works fine.
+    For private buckets, this generates a temporary signed URL.
+    """
+    try:
+        # Try to access the original URL first
+        resp = requests.head(image_url, timeout=5, allow_redirects=True)
+        if resp.status_code == 200:
+            # URL is accessible, no need for presigned URL
+            return image_url
+    except:
+        pass
+    
+    # Try to generate presigned URL
+    try:
+        from cos_presign import generate_presigned_url
+        return generate_presigned_url(image_url, expired)
+    except Exception:
+        # If presign fails, return original URL
+        return image_url
+
+
+def get_task_status(task_id: str, download_image: bool = True, presign: bool = False) -> dict:
+    """Query task status and optionally download preview image.
+    
+    Args:
+        task_id: The generation task ID
+        download_image: Whether to download the preview image locally
+        presign: Whether to generate presigned URL for COS images
+    """
     if not CLAW_SK:
         return {"error": "CLAW_SK environment variable is not set."}
 
@@ -54,10 +84,20 @@ def get_task_status(task_id: str, download_image: bool = True) -> dict:
     result = data.get("data", {})
     status = result.get("status", "UNKNOWN")
     
+    # Generate presigned URL if requested and task is completed
+    if presign and status == "COMPLETED":
+        rendered_url = result.get("renderedImageUrl") or result.get("result", {}).get("renderedImageUrl")
+        if rendered_url and "myqcloud.com" in rendered_url:
+            presigned_url = _generate_presigned_url_if_needed(rendered_url)
+            result["presignedImageUrl"] = presigned_url
+    
     # Download preview image if task is completed
     image_path = None
     if download_image and status == "COMPLETED":
         preview_url = result.get("previewImageUrl") or result.get("resultImageUrl")
+        if not preview_url:
+            # Try to get from result.renderedImageUrl
+            preview_url = result.get("renderedImageUrl") or result.get("result", {}).get("renderedImageUrl")
         if preview_url:
             image_path = download_preview_image(preview_url, task_id)
             if image_path:
@@ -101,12 +141,12 @@ def download_preview_image(image_url: str, task_id: str) -> str:
         return None
 
 
-def poll_until_complete(task_id: str, timeout: int = 120, download_image: bool = True) -> dict:
+def poll_until_complete(task_id: str, timeout: int = 120, download_image: bool = True, presign: bool = False) -> dict:
     """Poll task status until completed or timeout."""
     start_time = time.time()
     
     while time.time() - start_time < timeout:
-        result = get_task_status(task_id, download_image=False)  # Don't download during polling
+        result = get_task_status(task_id, download_image=False, presign=False)  # Don't download/presign during polling
         
         if "error" in result:
             return result
@@ -114,14 +154,8 @@ def poll_until_complete(task_id: str, timeout: int = 120, download_image: bool =
         status = result.get("status", "UNKNOWN")
         
         if status == "COMPLETED":
-            # Download image on completion
-            if download_image:
-                preview_url = result.get("previewImageUrl") or result.get("resultImageUrl")
-                if preview_url:
-                    image_path = download_preview_image(preview_url, task_id)
-                    if image_path:
-                        result["localImagePath"] = image_path
-            return result
+            # Download image and generate presigned URL on completion
+            return get_task_status(task_id, download_image=download_image, presign=presign)
         elif status == "FAILED":
             return result
         
@@ -171,13 +205,14 @@ if __name__ == "__main__":
     parser.add_argument("--poll", action="store_true", help="Poll until complete")
     parser.add_argument("--timeout", type=int, default=120, help="Poll timeout in seconds")
     parser.add_argument("--no-download", action="store_true", help="Skip downloading preview image")
+    parser.add_argument("--presign", action="store_true", help="Generate presigned URL for COS images")
     parser.add_argument("--json", action="store_true", help="Output JSON instead of Markdown")
     args = parser.parse_args()
     
     if args.poll:
-        result = poll_until_complete(args.task_id, args.timeout, download_image=not args.no_download)
+        result = poll_until_complete(args.task_id, args.timeout, download_image=not args.no_download, presign=args.presign)
     else:
-        result = get_task_status(args.task_id, download_image=not args.no_download)
+        result = get_task_status(args.task_id, download_image=not args.no_download, presign=args.presign)
     
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
