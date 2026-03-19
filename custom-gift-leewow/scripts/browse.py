@@ -6,6 +6,22 @@ import json
 import os
 import sys
 
+# Load environment variables from ~/.openclaw/.env
+def _load_env_file():
+    env_path = os.path.expanduser("~/.openclaw/.env")
+    if os.path.exists(env_path):
+        with open(env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    if key not in os.environ:
+                        os.environ[key] = value
+
+_load_env_file()
+
 from claw_auth import claw_get
 
 CLAW_BASE_URL = os.getenv("CLAW_BASE_URL", "https://leewow.com")
@@ -90,9 +106,45 @@ def _extract_price(sku_configs) -> str:
     return ""
 
 
+def browse_templates_json(category: str = None, count: int = 3) -> list:
+    """Return templates as JSON-serializable list."""
+    if not CLAW_SK:
+        return []
+
+    count = min(max(count, 1), 5)
+    url = f"{CLAW_BASE_URL}{CLAW_PATH_PREFIX}/claw/templates"
+
+    try:
+        resp = claw_get(CLAW_SK, url, timeout=15)
+        data = resp.json()
+    except Exception:
+        return []
+
+    if data.get("code") != 0:
+        return []
+
+    templates = data.get("data", [])
+
+    if category:
+        cat_lower = category.lower()
+        templates = [
+            t for t in templates
+            if cat_lower in (t.get("name", "") + t.get("description", "")).lower()
+        ]
+
+    return templates[:count]
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--category", type=str, default=None)
     parser.add_argument("--count", type=int, default=3)
+    parser.add_argument("--json", action="store_true", help="Output raw JSON")
     args = parser.parse_args()
-    print(browse_templates(category=args.category, count=args.count))
+    
+    if args.json:
+        import json as json_module
+        templates = browse_templates_json(category=args.category, count=args.count)
+        print(json_module.dumps(templates, ensure_ascii=False))
+    else:
+        print(browse_templates(category=args.category, count=args.count))

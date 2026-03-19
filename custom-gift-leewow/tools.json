@@ -25,7 +25,7 @@
     },
     {
       "name": "generate_preview",
-      "description": "Upload a design image and generate a customized product mockup. Returns a preview URL where the user can view the AI-generated result and place an order.",
+      "description": "Upload a design image and generate a customized product mockup. IMPORTANT: image_path must be in workspace directory (~/.openclaw/workspace/). Returns taskId for status polling.",
       "executor": "bash",
       "command": "python3 scripts/generate.py --image-path '{{image_path}}' --template-id {{template_id}} --design-theme '{{design_theme}}' --aspect-ratio '{{aspect_ratio}}'",
       "parameters": {
@@ -33,7 +33,7 @@
         "properties": {
           "image_path": {
             "type": "string",
-            "description": "Local file path of the design image"
+            "description": "Local file path of the design image. MUST be in workspace directory: ~/.openclaw/workspace/"
           },
           "template_id": {
             "type": "integer",
@@ -51,6 +51,32 @@
           }
         },
         "required": ["image_path", "template_id"]
+      }
+    },
+    {
+      "name": "get_generation_status",
+      "description": "Check generation task status and download preview image. Use --poll to wait for completion. Preview images are saved to ~/.openclaw/workspace/previews/ for display.",
+      "executor": "bash",
+      "command": "python3 scripts/get_status.py '{{task_id}}' {{#if poll}}--poll{{/if}} --timeout {{timeout}}",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "Task ID returned by generate_preview"
+          },
+          "poll": {
+            "type": "boolean",
+            "description": "Wait and poll until generation completes",
+            "default": true
+          },
+          "timeout": {
+            "type": "integer",
+            "description": "Maximum wait time in seconds",
+            "default": 120
+          }
+        },
+        "required": ["task_id"]
       }
     }
   ]
