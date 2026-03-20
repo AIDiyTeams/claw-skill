@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Browse Leewow customizable product templates, output Markdown cards."""
+"""Browse Leewow customizable product templates, output Markdown cards.
+
+Cover images are downloaded to workspace so the agent can display them
+in chat platforms that only support local file references.
+"""
 
 import argparse
+import hashlib
 import json
 import os
 import sys
+from urllib.parse import urlparse
 
 # Load environment variables from ~/.openclaw/.env
 def _load_env_file():
@@ -22,28 +28,62 @@ def _load_env_file():
 
 _load_env_file()
 
+import requests
 from claw_auth import claw_get
 
 CLAW_BASE_URL = os.getenv("CLAW_BASE_URL", "https://leewow.com")
 CLAW_PATH_PREFIX = os.getenv("CLAW_PATH_PREFIX", "")
 CLAW_SK = os.getenv("CLAW_SK", "")
 
+WORKSPACE_DIR = os.path.expanduser("~/.openclaw/workspace")
+TEMPLATE_IMG_DIR = os.path.join(WORKSPACE_DIR, "template_images")
 
-def browse_templates(category: str = None, count: int = 3) -> str:
+
+def _download_cover_image(remote_url: str, template_id) -> str | None:
+    """Download template cover image to workspace and return local path.
+
+    Uses a content-hash filename so repeated calls are instant (cache hit).
+    Returns None on failure — caller should fall back to remote URL.
+    """
+    if not remote_url:
+        return None
+    try:
+        os.makedirs(TEMPLATE_IMG_DIR, exist_ok=True)
+        url_hash = hashlib.md5(remote_url.encode()).hexdigest()[:10]
+        parsed = urlparse(remote_url)
+        ext = os.path.splitext(parsed.path)[1] or ".jpg"
+        filename = f"template_{template_id}_{url_hash}{ext}"
+        filepath = os.path.join(TEMPLATE_IMG_DIR, filename)
+
+        if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+            return filepath
+
+        resp = requests.get(remote_url, timeout=15)
+        resp.raise_for_status()
+        with open(filepath, "wb") as f:
+            f.write(resp.content)
+        return filepath
+    except Exception as e:
+        print(f"Warning: failed to download cover image: {e}", file=sys.stderr)
+        return None
+
+
+def browse_templates(category: str = None, count: int = 10) -> list:
+    """Return templates as a list of dicts, each with localImagePath for media sending."""
     if not CLAW_SK:
-        return "**Error**: CLAW_SK environment variable is not set."
+        return [{"error": "CLAW_SK environment variable is not set."}]
 
-    count = min(max(count, 1), 5)
+    count = min(max(count, 1), 20)
     url = f"{CLAW_BASE_URL}{CLAW_PATH_PREFIX}/claw/templates"
 
     try:
         resp = claw_get(CLAW_SK, url, timeout=15)
         data = resp.json()
     except Exception as e:
-        return f"**Error**: Failed to fetch templates: {e}"
+        return [{"error": f"Failed to fetch templates: {e}"}]
 
     if data.get("code") != 0:
-        return f"**Error**: API returned: {data.get('message', 'Unknown error')}"
+        return [{"error": f"API returned: {data.get('message', 'Unknown error')}"}]
 
     templates = data.get("data", [])
 
@@ -56,11 +96,7 @@ def browse_templates(category: str = None, count: int = 3) -> str:
 
     templates = templates[:count]
 
-    if not templates:
-        return "No matching templates found. Try a different category or browse all."
-
-    lines = [f"## Available Product Templates ({len(templates)} results)\n"]
-
+    results = []
     for i, t in enumerate(templates, 1):
         tid = t.get("templateId", "?")
         name = t.get("name", "Unnamed Product")
@@ -68,22 +104,22 @@ def browse_templates(category: str = None, count: int = 3) -> str:
         desc = t.get("description", "")
         sku_type = t.get("skuType", "")
         shipping = t.get("shippingOrigin", "CN")
-
         price_display = _extract_price(t.get("skuConfigs"))
 
-        lines.append(f"### {i}. {name}")
-        if cover:
-            lines.append(f"![{name}]({cover})")
-        if price_display:
-            lines.append(f"Price: {price_display}")
-        if desc:
-            lines.append(desc)
-        lines.append(f"Template ID: `{tid}` | SKU: {sku_type} | Ships from: {shipping}")
-        lines.append("")
+        local_cover = _download_cover_image(cover, tid)
 
-    lines.append("---")
-    lines.append("*Use `gift-generate` with a Template ID to create a customized design.*")
-    return "\n".join(lines)
+        results.append({
+            "index": i,
+            "templateId": tid,
+            "name": name,
+            "description": desc,
+            "skuType": sku_type,
+            "shippingOrigin": shipping,
+            "price": price_display,
+            "localImagePath": local_cover,
+        })
+
+    return results
 
 
 def _extract_price(sku_configs) -> str:
@@ -106,12 +142,12 @@ def _extract_price(sku_configs) -> str:
     return ""
 
 
-def browse_templates_json(category: str = None, count: int = 3) -> list:
+def browse_templates_json(category: str = None, count: int = 10) -> list:
     """Return templates as JSON-serializable list."""
     if not CLAW_SK:
         return []
 
-    count = min(max(count, 1), 5)
+    count = min(max(count, 1), 20)
     url = f"{CLAW_BASE_URL}{CLAW_PATH_PREFIX}/claw/templates"
 
     try:
@@ -138,13 +174,9 @@ def browse_templates_json(category: str = None, count: int = 3) -> list:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--category", type=str, default=None)
-    parser.add_argument("--count", type=int, default=3)
-    parser.add_argument("--json", action="store_true", help="Output raw JSON")
+    parser.add_argument("--count", type=int, default=10)
+    parser.add_argument("--json", action="store_true", help="(kept for compat, always outputs JSON)")
     args = parser.parse_args()
-    
-    if args.json:
-        import json as json_module
-        templates = browse_templates_json(category=args.category, count=args.count)
-        print(json_module.dumps(templates, ensure_ascii=False))
-    else:
-        print(browse_templates(category=args.category, count=args.count))
+
+    templates = browse_templates(category=args.category, count=args.count)
+    print(json.dumps(templates, ensure_ascii=False, indent=2))

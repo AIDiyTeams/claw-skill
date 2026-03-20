@@ -60,6 +60,33 @@ def build_claw_headers(sk: str, method: str, url: str, body: bytes = b"") -> dic
     }
 
 
+def sign_url(sk: str, url: str) -> str:
+    """Append skid / ts / nonce / sig query parameters to a URL.
+
+    The preview / purchase page reads these params, sends them to the backend
+    which verifies the HMAC and exchanges them for a session JWT.
+    Signing payload is identical to the header-based scheme (method=GET, empty body).
+    """
+    from urllib.parse import urlencode, urlparse, urlunparse, parse_qs, urljoin
+
+    key_id = _parse_key_id(sk)
+    timestamp = str(int(time.time()))
+    nonce = uuid.uuid4().hex[:16]
+
+    parsed = urlparse(url)
+    sign_path = _strip_prefix(parsed.path)
+    body_hash = _compute_body_hash(b"")
+    sign_payload = f"{key_id}\n{timestamp}\n{nonce}\nGET\n{sign_path}\n{body_hash}"
+    signature = _compute_signature(sk, sign_payload)
+
+    sep = "&" if parsed.query else ""
+    new_query = (
+        f"{parsed.query}{sep}"
+        f"skid={key_id}&ts={timestamp}&nonce={nonce}&sig={signature}"
+    )
+    return urlunparse(parsed._replace(query=new_query))
+
+
 def claw_get(sk: str, url: str, **kwargs) -> requests.Response:
     headers = build_claw_headers(sk, "GET", url)
     headers.update(kwargs.pop("headers", {}))

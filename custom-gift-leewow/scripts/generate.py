@@ -21,7 +21,7 @@ def _load_env_file():
 
 _load_env_file()
 
-from claw_auth import claw_post
+from claw_auth import claw_post, sign_url
 from cos_uploader import upload_file_to_cos
 
 CLAW_BASE_URL = os.getenv("CLAW_BASE_URL", "https://leewow.com")
@@ -72,35 +72,53 @@ def generate_preview(image_path: str, template_id: int,
 
 
 def format_generate_result(result: dict) -> str:
-    """Format generation result as Markdown."""
+    """Format generation trigger result. Guides the agent to poll for completion."""
     task_id = result.get("taskId", "unknown")
-    preview_url = result.get("previewUrl", "")
     status = result.get("status", "PENDING")
     estimated = result.get("estimatedSeconds", 45)
     template_id = result.get("templateId", "?")
 
-    lines = [
-        "## 🎨 Design Generation Started\n",
-        f"**Status**: {status}",
-        f"**Estimated time**: ~{estimated} seconds\n",
-        f"**Task ID**: `{task_id}`",
-        f"**Template**: #{template_id}",
-    ]
-    
-    if preview_url:
-        lines.append(f"\n**Preview Link**: [{preview_url}]({preview_url})")
-    
-    lines.extend([
+    return "\n".join([
+        f"正在生成效果图 ⏳ (约{estimated}秒)",
+        f"任务ID: {task_id} | 模板: #{template_id} | 状态: {status}",
         "",
-        "---",
-        "⏳ **Next Steps**:",
-        f"1. Wait ~{estimated} seconds for generation to complete",
-        f"2. Check status: `python3 get_status.py {task_id} --poll`",
-        "3. Preview image will be saved to `~/.openclaw/workspace/previews/`",
-        "",
-        "💡 **Note**: Images must be in workspace directory for the agent to access them.",
+        "[AGENT_INSTRUCTION]",
+        f"Call get_generation_status with task_id={task_id} and poll=true.",
+        "When COMPLETED, you MUST:",
+        "1. Send the preview image as a MEDIA ATTACHMENT (localImagePath from the result)",
+        "2. Include the purchaseUrl in the text message",
+        "Do NOT use ![markdown] syntax — send the actual image file via message media.",
+        "[/AGENT_INSTRUCTION]",
     ])
-    return "\n".join(lines)
+
+
+def _safe_result(result: dict) -> dict:
+    """Build safe output: only taskId, status, estimatedSeconds, templateId, purchaseUrl.
+
+    The previewUrl from /claw/generate is signed to become purchaseUrl.
+    All other URLs (imageUrl etc.) are stripped so the agent cannot leak them.
+    The agent MUST call get_generation_status to get the localImagePath.
+    """
+    if "error" in result:
+        return result
+
+    task_id = result.get("taskId", "unknown")
+    preview_url = result.get("previewUrl")
+
+    out = {
+        "taskId": task_id,
+        "status": result.get("status", "PENDING"),
+        "estimatedSeconds": result.get("estimatedSeconds", 45),
+        "templateId": result.get("templateId"),
+        "_next": f"MUST call get_generation_status(task_id='{task_id}', poll=true) "
+                 f"to get the preview image (localImagePath). "
+                 f"Send purchaseUrl below to the user together with the image.",
+    }
+
+    if preview_url and CLAW_SK:
+        out["purchaseUrl"] = sign_url(CLAW_SK, preview_url)
+
+    return out
 
 
 if __name__ == "__main__":
@@ -109,16 +127,9 @@ if __name__ == "__main__":
     parser.add_argument("--template-id", type=int, required=True)
     parser.add_argument("--design-theme", type=str, default="")
     parser.add_argument("--aspect-ratio", type=str, default="3:4")
-    parser.add_argument("--json", action="store_true", help="Output JSON instead of Markdown")
+    parser.add_argument("--json", action="store_true", help="(compat) always outputs safe JSON")
     args = parser.parse_args()
-    
+
+    import json
     result = generate_preview(args.image_path, args.template_id, args.design_theme, args.aspect_ratio)
-    
-    if args.json:
-        import json
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        if "error" in result:
-            print(f"**Error**: {result['error']}")
-        else:
-            print(format_generate_result(result))
+    print(json.dumps(_safe_result(result), ensure_ascii=False, indent=2))

@@ -26,6 +26,83 @@ Create personalized gifts and custom products powered by AI. This skill provides
 - User provides an **image** and wants to turn it into a product
 - User says "make this into a mug/bag/shirt", "customize this design"
 
+## CRITICAL: Images Must Be Sent via Media, NOT Markdown
+
+Feishu / chat platforms **cannot render** `![image](local_path)` markdown.
+To show images to the user you **MUST send them as media attachments**
+using whatever message/media mechanism your platform provides
+(e.g. the `message` tool with a `media` parameter on OpenClaw/Feishu).
+
+Tool outputs include a `localImagePath` (workspace file) for every image.
+Use that path as the media attachment. **Showing images is mandatory, not optional.**
+
+## Generator Output Format (MUST FOLLOW)
+
+This skill uses a **two-step generator pattern**.
+
+### Step 1: Browse — Show Templates
+
+After calling `browse_templates`, the tool returns JSON with a list of templates.
+Each template has `localImagePath` (cover image downloaded to workspace).
+
+For **every** template you MUST:
+1. **Send the cover image as a media attachment** using the `localImagePath`
+2. Include a text caption with: name, price, templateId
+
+Example message flow:
+
+```
+[send image: /Users/.../.openclaw/workspace/template_images/template_3_xxx.jpg]
+1. 男士卫衣 (Men's Hoodie) — 💰 $29.9 USD — 模板ID: 3
+
+[send image: /Users/.../.openclaw/workspace/template_images/template_12_xxx.jpg]
+2. 帆布手提袋 (Canvas Tote Bag) — 💰 $19.9 USD — 模板ID: 12
+
+...
+
+告诉我你想选哪个，我来帮你生成效果图！
+```
+
+**Rules for Step 1:**
+- MUST send each template's cover image as media — do NOT skip images
+- MUST include price and templateId in text
+- Images are at `localImagePath` in the JSON — already in workspace
+- If sending all images at once is supported, do that; otherwise send one by one
+
+### Step 2: Generation Complete — Show Preview + Purchase Link
+
+After `get_generation_status` returns COMPLETED, the JSON contains:
+- `localImagePath` — preview image in workspace
+- `purchaseUrl` — signed purchase/order page link
+
+You MUST:
+1. **Send the preview image as a media attachment** using `localImagePath`
+2. **Send the purchase link** in the text message
+
+Example:
+
+```
+[send image: /Users/.../.openclaw/workspace/previews/leewow_preview_task_xxx.jpg]
+
+你的定制效果图出来啦 🎉
+🛒 点击下单购买: https://leewow.com/h5/preview?taskId=xxx&skid=...&sig=...
+
+喜欢吗？如果想调整或者试试其他产品，告诉我！
+```
+
+**Rules for Step 2:**
+- MUST send the preview image as media — this is the whole point
+- MUST include the purchase link (it's pre-signed with skid/sig)
+- Do NOT just describe the product in text — the user needs to SEE the image
+
+### Common Mistakes to AVOID
+
+❌ Using `![image](path)` markdown — Feishu can't render local paths this way
+❌ Just saying "完成啦！" and describing the product in text without sending the image
+❌ Omitting the purchase/order link
+❌ Sending a table/list instead of actual images
+❌ Saying "图片已下载到本地" without actually sending the image to the user
+
 ## Prerequisites
 
 - `CLAW_SK` — Leewow Secret Key (format: `sk-leewow-{keyId}-{secret}`)
@@ -73,13 +150,13 @@ python3 scripts/get_status.py {taskId} --presign --json
 
 **Note**: Most Leewow COS buckets are public, so presigned URLs are optional.
 
-## Typical Flow
+## Typical Flow (Generator Pattern)
 
-1. **Browse** — Use `browse_templates` to show available products
-2. **Upload** — User provides an image (must be in workspace)
-3. **Generate** — Use `generate_preview` to start AI generation (returns taskId)
-4. **Poll** — Use `get_status --poll` to wait for completion
-5. **Display** — Preview image is automatically downloaded and can be shown to user
+1. **Browse (Step 1)** — Call `browse_templates` → get JSON with localImagePath for each template → **send each cover image as media** + text caption (name, price, ID) → ask user to pick
+2. **Upload** — User provides an image (must be in workspace `~/.openclaw/workspace/`)
+3. **Generate** — Call `generate_preview` → get taskId → immediately proceed to step 4
+4. **Poll** — Call `get_generation_status` with `poll=true` → wait for COMPLETED
+5. **Display (Step 2)** — **Send preview image as media** (`localImagePath`) + text with PURCHASE LINK (`purchaseUrl`)
 
 ## Tool Reference
 
@@ -135,37 +212,42 @@ Options:
 - Never expose or log the `CLAW_SK` value. When confirming configuration, only show the last 4 characters.
 - Input images **must** be in workspace directory for the agent to access them
 - Preview images are automatically saved to `workspace/previews/`
-- Limit browse results to 5 templates maximum per request
+- Limit browse results to 20 templates maximum per request
 
 ## Examples
 
 ```text
 User: "I want to make a custom gift for my friend"
-→ Use browse_templates → user picks template → get image path from user → 
-  generate_preview → poll with get_status → display preview image
+→ browse_templates → for each template: send cover image as media + text caption
+→ user picks → generate_preview → get_generation_status --poll
+→ send preview image as media + purchaseUrl in text
 
 User: "Turn this photo into a phone case"
-→ browse_templates --category phone → user picks → generate_preview → 
-  get_status --poll → show downloaded preview image
+→ browse_templates --category phone → send images as media → user picks
+→ generate_preview → get_generation_status --poll
+→ send preview image as media + purchaseUrl in text
 
 User: "Show me what products I can customize"
-→ browse_templates --json → display product cards with images
+→ browse_templates → send ALL template images as media with captions
 ```
 
 ## Output Structure
 
-### browse_templates --json
+### browse_templates
 ```json
 [
   {
+    "index": 1,
     "templateId": 3,
-    "name": "Hoodie",
-    "coverImage": "https://...",
-    "description": "...",
+    "name": "Men's Hoodie",
+    "price": "**$29.9 USD**",
+    "localImagePath": "/Users/.../.openclaw/workspace/template_images/template_3_xxx.jpg",
+    "remoteImageUrl": "https://...",
     "skuType": "hoodie"
   }
 ]
 ```
+→ Agent sends `localImagePath` as media attachment + text caption per template.
 
 ### generate_preview --json
 ```json
@@ -183,8 +265,8 @@ User: "Show me what products I can customize"
 {
   "taskId": "task_xxx",
   "status": "COMPLETED",
-  "previewUrl": "https://...",
-  "previewImageUrl": "https://...",
+  "purchaseUrl": "https://leewow.com/h5/preview?taskId=xxx&skid=...&sig=...",
   "localImagePath": "/Users/.../.openclaw/workspace/previews/leewow_preview_task_xxx.jpg"
 }
 ```
+→ Agent sends `localImagePath` as media attachment + `purchaseUrl` in text.
