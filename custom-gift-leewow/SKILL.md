@@ -1,6 +1,6 @@
 ---
 name: custom-gift-leewow
-version: 1.0.7
+version: 1.0.8
 description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
