@@ -23,13 +23,39 @@ def compact_description(value: object, limit: int = 56) -> str:
     return text[: limit - 3].rstrip() + "..."
 
 
+def build_customer_subtitle(name: str, sku_type: str, shipping: str) -> str:
+    title = normalize_plain_text(name).lower()
+    sku = normalize_plain_text(sku_type).lower()
+    key = f"{title} {sku}"
+
+    mapping = [
+        (("hoodie", "sweatshirt"), "可定制连帽卫衣，适合大面积图案展示"),
+        (("tote", "bag"), "可定制通勤包袋，适合日常使用"),
+        (("crossbody",), "可定制斜挎包，适合轻便出行"),
+        (("iphone", "phone case", "case"), "可定制手机壳，适合个性化图案"),
+        (("socks",), "可定制袜子，适合趣味图案设计"),
+        (("pillowcase", "pillow"), "可定制家居用品，适合照片或插画"),
+        (("travel pillow",), "可定制旅行枕，适合舒适出行场景"),
+        (("framed print", "print", "poster"), "可定制装饰画，适合展示你的作品"),
+    ]
+
+    for keywords, subtitle in mapping:
+        if any(keyword in key for keyword in keywords):
+            return subtitle
+
+    shipping_suffix = f" · Ships from {shipping}" if shipping else ""
+    return f"支持自定义设计的商品{shipping_suffix}".strip()
+
+
 def normalize_browse_item(template: dict, price_display: str) -> dict:
     sku_type = normalize_plain_text(template.get("skuType")) or "-"
     shipping = normalize_plain_text(template.get("shippingOrigin")) or "CN"
-    description = compact_description(template.get("description", ""))
+    description = build_customer_subtitle(
+        name=normalize_plain_text(template.get("name", "Unnamed Product")) or "Unnamed Product",
+        sku_type=sku_type,
+        shipping=shipping,
+    )
     info_parts = [f"SKU: {sku_type}", f"Ships: {shipping}"]
-    if description:
-        info_parts.append(description)
     return {
         "templateId": template.get("templateId", "?"),
         "name": normalize_plain_text(template.get("name", "Unnamed Product")) or "Unnamed Product",

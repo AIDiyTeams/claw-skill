@@ -1,14 +1,15 @@
 ---
 name: custom-gift-leewow
-version: 1.0.11
+version: 1.0.12
 description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
   Includes tools: browse_templates (discover products), generate_preview
   (create a design from an image), and get_generation_status (check generation
-  progress). browse_templates returns a Feishu-friendly markdown table with an
-  image column. Generated previews are still downloaded to workspace for
-  display. Powered by Leewow. Requires CLAW_SK. If ClawHub is rate-limited,
+  progress). browse_templates returns per-product markdown messages with a
+  customer-facing subtitle and one large image per message. Generated previews
+  are still downloaded to workspace for display. Powered by Leewow. Requires
+  CLAW_SK. If ClawHub is rate-limited,
   install from GitHub:
   https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
 homepage: https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
@@ -19,9 +20,9 @@ homepage: https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
 > ClawHub rate-limited? Install directly from GitHub:
 > `https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow`
 
-> Feishu browse rule: product browsing MUST be shown as one markdown table with
-> the images inside the table. Do NOT split browse results into standalone image
-> messages.
+> Feishu browse rule: product browsing MUST be shown as multiple product
+> messages. Each message should contain one product title, one customer-facing
+> subtitle, and one large image.
 
 ## Install Fallback
 
@@ -68,8 +69,8 @@ For the current production channel (`feishu`):
 - `browse_templates` MUST be displayed as multiple product messages, one product per message
 - Each browse message MUST keep the product image inside the same message, below the title/description
 - For browse requests, the agent MUST send each returned `messagesMarkdown` item verbatim unless the user explicitly asks for another format
-- For browse requests, the agent MUST NOT answer with a status summary, tool summary, or explanation of what the table contains
-- The agent MUST NOT explain that "the skill does not require a table" because the current skill explicitly defines the browse message layout
+- For browse requests, the agent MUST NOT answer with a status summary, tool summary, or explanation of what the browse messages contain
+- The agent MUST NOT explain that "the skill does not require a table" because the current skill explicitly defines a per-product browse message layout
 - The agent MUST NOT cite the generated-preview media rule as justification for changing the browse layout
 
 Important distinction:
@@ -342,4 +343,4 @@ User: "Show me what products I can customize"
 ```
 → Agent sends `localImagePath` as media attachment + `replyMarkdown` as text.
 
-Version Marker: custom-gift-leewow@1.0.11
+Version Marker: custom-gift-leewow@1.0.12
