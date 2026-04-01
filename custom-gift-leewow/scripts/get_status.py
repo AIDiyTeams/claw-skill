@@ -96,6 +96,8 @@ def get_task_status(task_id: str, download_image: bool = True) -> dict:
             template_id=out.get("templateId"),
             purchase_url=out["purchaseUrl"],
         )
+        out["deliveryMode"] = "message_tool_media_then_text"
+        out["finalAssistantReply"] = "NO_REPLY"
 
     elif status == "FAILED":
         out["errorMessage"] = raw.get("errorMessage", "Unknown error")
@@ -103,12 +105,16 @@ def get_task_status(task_id: str, download_image: bool = True) -> dict:
             task_id=out["taskId"],
             error_message=out["errorMessage"],
         )
+        out["deliveryMode"] = "message_tool_text_only"
+        out["finalAssistantReply"] = "NO_REPLY"
     else:
         out["replyMarkdown"] = _build_pending_reply_markdown(
             task_id=out["taskId"],
             template_id=out.get("templateId"),
             status=status,
         )
+        out["deliveryMode"] = "message_tool_text_only"
+        out["finalAssistantReply"] = "NO_REPLY"
 
     return out
 

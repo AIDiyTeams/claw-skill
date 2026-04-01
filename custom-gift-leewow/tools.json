@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "browse_templates",
-      "description": "Fetch customizable product templates. Returns JSON with messagesMarkdown: send each string in order as a separate user message, verbatim—do not merge, rewrite, or wrap with commentary. If Feishu app credentials are configured, Python resolves image markdown to Feishu image keys; otherwise Python safely degrades image blocks to preview links instead of broken image markdown.",
+      "description": "Fetch customizable product templates. Returns JSON with messagesMarkdown. Use OpenClaw message tool to send each messagesMarkdown item as its own message, in order, verbatim, in the current conversation; then reply with NO_REPLY. Do not merge them into one normal assistant bubble. If Feishu app credentials are configured, Python resolves image markdown to Feishu image keys; otherwise Python safely degrades image blocks to preview links instead of broken image markdown.",
       "executor": "bash",
       "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}} --channel '{{channel}}' --json",
       "parameters": {
@@ -60,7 +60,7 @@
     },
     {
       "name": "get_generation_status",
-      "description": "Check generation task status. Returns JSON with replyMarkdown and, when completed, localImagePath plus purchaseUrl. The agent should send localImagePath as media only for the generated preview image, then send replyMarkdown as the text reply. Do NOT use this rule to change browse_templates message layout.",
+      "description": "Check generation task status. Returns JSON with replyMarkdown and, when completed, localImagePath plus purchaseUrl. Use OpenClaw message tool for outbound delivery: send localImagePath as media only for the generated preview image, then send replyMarkdown as text, then reply with NO_REPLY. Do NOT use this rule to change browse_templates message layout.",
       "executor": "bash",
       "command": "python3 scripts/get_status.py '{{task_id}}' {{#if poll}}--poll{{/if}} --timeout {{timeout}} --json",
       "parameters": {
