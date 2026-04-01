@@ -2,22 +2,23 @@
 """Upload image to COS, call /claw/generate, output Markdown preview card."""
 
 import argparse
+import json
 import os
-import sys
 
 # Load environment variables from ~/.openclaw/.env
 def _load_env_file():
     env_path = os.path.expanduser("~/.openclaw/.env")
     if os.path.exists(env_path):
-        with open(env_path, 'r') as f:
+        with open(env_path, "r") as f:
             for line in f:
                 line = line.strip()
-                if not line or line.startswith('#'):
+                if not line or line.startswith("#"):
                     continue
-                if '=' in line:
-                    key, value = line.split('=', 1)
+                if "=" in line:
+                    key, value = line.split("=", 1)
                     if key not in os.environ:
                         os.environ[key] = value
+
 
 _load_env_file()
 
@@ -95,8 +96,7 @@ def format_generate_result(result: dict) -> str:
 def _safe_result(result: dict) -> dict:
     """Build safe output: only taskId, status, estimatedSeconds, templateId, purchaseUrl.
 
-    The previewUrl from /claw/generate is signed to become purchaseUrl.
-    All other URLs (imageUrl etc.) are stripped so the agent cannot leak them.
+    purchaseUrl: previewUrl + skid + sig per ClawPreviewAuthController (claw-preview HMAC).
     The agent MUST call get_generation_status to get the localImagePath.
     """
     if "error" in result:
@@ -130,6 +130,5 @@ if __name__ == "__main__":
     parser.add_argument("--json", action="store_true", help="(compat) always outputs safe JSON")
     args = parser.parse_args()
 
-    import json
     result = generate_preview(args.image_path, args.template_id, args.design_theme, args.aspect_ratio)
     print(json.dumps(_safe_result(result), ensure_ascii=False, indent=2))

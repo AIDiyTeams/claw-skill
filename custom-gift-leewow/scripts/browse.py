@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Browse Leewow customizable product templates, output Markdown cards.
+from __future__ import annotations
+"""Browse Leewow customizable product templates.
 
-Cover images are downloaded to workspace so the agent can display them
-in chat platforms that only support local file references.
+Default output is a Feishu-friendly Markdown table so OpenClaw can render the
+result inside an interactive card with an image column. `--json` is kept for
+debugging / compatibility.
 """
 
 import argparse
@@ -68,12 +70,11 @@ def _download_cover_image(remote_url: str, template_id) -> str | None:
         return None
 
 
-def browse_templates(category: str = None, count: int = 10) -> list:
-    """Return templates as a list of dicts, each with localImagePath for media sending."""
+def _fetch_templates(category: str = None, count: int = 5) -> list:
     if not CLAW_SK:
         return [{"error": "CLAW_SK environment variable is not set."}]
 
-    count = min(max(count, 1), 20)
+    count = min(max(count, 1), 10)
     url = f"{CLAW_BASE_URL}{CLAW_PATH_PREFIX}/claw/templates"
 
     try:
@@ -94,32 +95,7 @@ def browse_templates(category: str = None, count: int = 10) -> list:
             if cat_lower in (t.get("name", "") + t.get("description", "")).lower()
         ]
 
-    templates = templates[:count]
-
-    results = []
-    for i, t in enumerate(templates, 1):
-        tid = t.get("templateId", "?")
-        name = t.get("name", "Unnamed Product")
-        cover = t.get("coverImage", "")
-        desc = t.get("description", "")
-        sku_type = t.get("skuType", "")
-        shipping = t.get("shippingOrigin", "CN")
-        price_display = _extract_price(t.get("skuConfigs"))
-
-        local_cover = _download_cover_image(cover, tid)
-
-        results.append({
-            "index": i,
-            "templateId": tid,
-            "name": name,
-            "description": desc,
-            "skuType": sku_type,
-            "shippingOrigin": shipping,
-            "price": price_display,
-            "localImagePath": local_cover,
-        })
-
-    return results
+    return templates[:count]
 
 
 def _extract_price(sku_configs) -> str:
@@ -142,41 +118,119 @@ def _extract_price(sku_configs) -> str:
     return ""
 
 
-def browse_templates_json(category: str = None, count: int = 10) -> list:
-    """Return templates as JSON-serializable list."""
-    if not CLAW_SK:
-        return []
+def _normalize_plain_text(value) -> str:
+    return str(value or "").replace("\r", " ").replace("\n", " ").strip()
 
-    count = min(max(count, 1), 20)
-    url = f"{CLAW_BASE_URL}{CLAW_PATH_PREFIX}/claw/templates"
 
-    try:
-        resp = claw_get(CLAW_SK, url, timeout=15)
-        data = resp.json()
-    except Exception:
-        return []
+def _escape_table_cell(value) -> str:
+    text = _normalize_plain_text(value)
+    if not text:
+        return "-"
+    return text.replace("|", "\\|")
 
-    if data.get("code") != 0:
-        return []
 
-    templates = data.get("data", [])
+def _compact_description(value: str, limit: int = 56) -> str:
+    text = _normalize_plain_text(value)
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3].rstrip() + "..."
 
-    if category:
-        cat_lower = category.lower()
-        templates = [
-            t for t in templates
-            if cat_lower in (t.get("name", "") + t.get("description", "")).lower()
+
+def _format_image_cell(name: str, cover_url: str) -> str:
+    if not cover_url:
+        return "-"
+    alt = _escape_table_cell(name or "Preview")
+    return f"![{alt}]({cover_url})"
+
+
+def _format_preview_link(cover_url: str) -> str:
+    if not cover_url:
+        return "-"
+    return f"[Open image]({cover_url})"
+
+
+def browse_templates(category: str = None, count: int = 5) -> str:
+    """Return templates as a Feishu-friendly Markdown table."""
+    templates = _fetch_templates(category=category, count=count)
+    if templates and templates[0].get("error"):
+        return f"**Error**: {templates[0]['error']}"
+
+    if not templates:
+        return "No matching templates found. Try a different category or browse all."
+
+    lines = [
+        f"## Available Product Templates ({len(templates)} results)",
+        "",
+        "| Image | Product | Price | Template ID | Info | Preview |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+
+    for template in templates:
+        tid = template.get("templateId", "?")
+        name = _escape_table_cell(template.get("name", "Unnamed Product"))
+        cover = _normalize_plain_text(template.get("coverImage"))
+        price_display = _extract_price(template.get("skuConfigs")) or "-"
+        price_display = price_display.replace("|", "\\|")
+        sku_type = _normalize_plain_text(template.get("skuType")) or "-"
+        shipping = _normalize_plain_text(template.get("shippingOrigin")) or "CN"
+        description = _compact_description(template.get("description", ""))
+        info_parts = [f"SKU: {sku_type}", f"Ships: {shipping}"]
+        if description:
+            info_parts.append(description)
+        info = _escape_table_cell(" · ".join(info_parts))
+        image_cell = _format_image_cell(name, cover)
+        preview_link = _format_preview_link(cover)
+
+        lines.append(
+            f"| {image_cell} | **{name}** | {price_display} | `{tid}` | {info} | {preview_link} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "Use `generate_preview` with a `Template ID` to create a customized design.",
+            "If a thumbnail does not render in Feishu, use the `Preview` link in the same row.",
         ]
+    )
+    return "\n".join(lines)
 
-    return templates[:count]
+
+def browse_templates_json(category: str = None, count: int = 5) -> list:
+    """Return JSON-serializable template data with optional local image cache."""
+    templates = _fetch_templates(category=category, count=count)
+    if templates and templates[0].get("error"):
+        return templates
+
+    results = []
+    for i, template in enumerate(templates, 1):
+        tid = template.get("templateId", "?")
+        cover = _normalize_plain_text(template.get("coverImage"))
+        local_cover = _download_cover_image(cover, tid)
+        results.append(
+            {
+                "index": i,
+                "templateId": tid,
+                "name": template.get("name", "Unnamed Product"),
+                "description": template.get("description", ""),
+                "skuType": template.get("skuType", ""),
+                "shippingOrigin": template.get("shippingOrigin", "CN"),
+                "price": _extract_price(template.get("skuConfigs")),
+                "remoteImageUrl": cover,
+                "localImagePath": local_cover,
+            }
+        )
+
+    return results
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--category", type=str, default=None)
-    parser.add_argument("--count", type=int, default=10)
-    parser.add_argument("--json", action="store_true", help="(kept for compat, always outputs JSON)")
+    parser.add_argument("--count", type=int, default=5)
+    parser.add_argument("--json", action="store_true", help="Output JSON instead of Markdown table")
     args = parser.parse_args()
 
-    templates = browse_templates(category=args.category, count=args.count)
-    print(json.dumps(templates, ensure_ascii=False, indent=2))
+    if args.json:
+        print(json.dumps(browse_templates_json(category=args.category, count=args.count), ensure_ascii=False, indent=2))
+    else:
+        print(browse_templates(category=args.category, count=args.count))

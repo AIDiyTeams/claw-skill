@@ -3,6 +3,12 @@
 Supports CLAW_PATH_PREFIX env var (e.g. "/v2") for proxied environments:
 - Request URL: {CLAW_BASE_URL}{CLAW_PATH_PREFIX}/claw/templates
 - Sign path:   /claw/templates  (what Java actually receives)
+
+Preview page token exchange (browser → GET /claw/preview/auth) matches
+ClawPreviewAuthController: only query params skid + sig, with
+sig = hex(HMAC-SHA256(key=full_sk, message="claw-preview:" + skid)).
+
+Claw API calls use X-Claw-* headers; payload format is defined in ClawSkAuthFilter.
 """
 
 import hashlib
@@ -10,7 +16,7 @@ import hmac
 import os
 import time
 import uuid
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import requests
 
@@ -39,7 +45,7 @@ def _compute_signature(sk: str, payload: str) -> str:
 def _strip_prefix(path: str) -> str:
     """Strip CLAW_PATH_PREFIX from path for signing (Java receives path without prefix)."""
     if CLAW_PATH_PREFIX and path.startswith(CLAW_PATH_PREFIX):
-        return path[len(CLAW_PATH_PREFIX):]
+        return path[len(CLAW_PATH_PREFIX) :]
     return path
 
 
@@ -60,30 +66,32 @@ def build_claw_headers(sk: str, method: str, url: str, body: bytes = b"") -> dic
     }
 
 
-def sign_url(sk: str, url: str) -> str:
-    """Append skid / ts / nonce / sig query parameters to a URL.
-
-    The preview / purchase page reads these params, sends them to the backend
-    which verifies the HMAC and exchanges them for a session JWT.
-    Signing payload is identical to the header-based scheme (method=GET, empty body).
-    """
-    from urllib.parse import urlencode, urlparse, urlunparse, parse_qs, urljoin
-
+def build_preview_auth_params(sk: str) -> dict:
+    """skid + sig for GET /claw/preview/auth — matches ClawPreviewAuthController.exchangeToken."""
     key_id = _parse_key_id(sk)
-    timestamp = str(int(time.time()))
-    nonce = uuid.uuid4().hex[:16]
+    message = f"claw-preview:{key_id}"
+    sig = hmac.new(
+        sk.encode("utf-8"),
+        message.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return {"skid": key_id, "sig": sig}
 
+
+def sign_url(sk: str, url: str) -> str:
+    """Append skid & sig query params for preview / purchase links.
+
+    Java verifies with:
+      expectedSig = hmacSha256(fullSk, \"claw-preview:\" + skid)  // hex, lowercase
+
+    Do not use X-Claw header signing (ts/nonce/path) here — preview auth only accepts skid+sig.
+    """
+    auth = build_preview_auth_params(sk)
     parsed = urlparse(url)
-    sign_path = _strip_prefix(parsed.path)
-    body_hash = _compute_body_hash(b"")
-    sign_payload = f"{key_id}\n{timestamp}\n{nonce}\nGET\n{sign_path}\n{body_hash}"
-    signature = _compute_signature(sk, sign_payload)
-
-    sep = "&" if parsed.query else ""
-    new_query = (
-        f"{parsed.query}{sep}"
-        f"skid={key_id}&ts={timestamp}&nonce={nonce}&sig={signature}"
-    )
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query["skid"] = auth["skid"]
+    query["sig"] = auth["sig"]
+    new_query = urlencode(query)
     return urlunparse(parsed._replace(query=new_query))
 
 
@@ -95,6 +103,7 @@ def claw_get(sk: str, url: str, **kwargs) -> requests.Response:
 
 def claw_post(sk: str, url: str, json_data: dict = None, **kwargs) -> requests.Response:
     import json as json_module
+
     body = json_module.dumps(json_data).encode("utf-8") if json_data else b""
     headers = build_claw_headers(sk, "POST", url, body)
     headers["Content-Type"] = "application/json"

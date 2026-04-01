@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "browse_templates",
-      "description": "Browse Leewow product templates. Returns JSON array — each item has localImagePath (workspace file). CRITICAL: You MUST send each template's image to the user as a media attachment (NOT markdown). Use the message tool with media param, or your platform's image-sending method. Then include name, price, templateId in the text caption.",
+      "description": "Browse Leewow product templates. Returns a Feishu-friendly Markdown table with an image column, price, template ID, and preview link. Send the table directly in chat; do NOT fan out template covers as separate media messages.",
       "executor": "bash",
       "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}}",
       "parameters": {
@@ -15,10 +15,10 @@
           },
           "count": {
             "type": "integer",
-            "description": "Number of templates to return (1-20, default 10)",
-            "default": 10,
+            "description": "Number of templates to return in the table (1-10, default 5)",
+            "default": 5,
             "minimum": 1,
-            "maximum": 20
+            "maximum": 10
           }
         }
       }

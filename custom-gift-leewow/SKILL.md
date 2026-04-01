@@ -4,8 +4,10 @@ description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
   Includes tools: browse_templates (discover products), generate_preview
-  (create a design from an image), and get_status (check generation progress).
-  Automatically downloads preview images to workspace for display.
+  (create a design from an image), and get_generation_status (check generation
+  progress). browse_templates returns a Feishu-friendly markdown table with an
+  image column. Generated previews are still downloaded to workspace for
+  display.
   Powered by Leewow. Requires CLAW_SK.
 ---
 
@@ -17,7 +19,7 @@ Create personalized gifts and custom products powered by AI. This skill provides
 |------|---------|
 | `browse_templates` | Discover customizable product templates (bags, accessories, home decor, apparel, etc.) |
 | `generate_preview` | Upload a design image and trigger AI generation |
-| `get_status` | Check generation status and download preview image |
+| `get_generation_status` | Check generation status and download preview image |
 
 ## When to Use
 
@@ -26,15 +28,14 @@ Create personalized gifts and custom products powered by AI. This skill provides
 - User provides an **image** and wants to turn it into a product
 - User says "make this into a mug/bag/shirt", "customize this design"
 
-## CRITICAL: Images Must Be Sent via Media, NOT Markdown
+## Browse Output Format
 
-Feishu / chat platforms **cannot render** `![image](local_path)` markdown.
-To show images to the user you **MUST send them as media attachments**
-using whatever message/media mechanism your platform provides
-(e.g. the `message` tool with a `media` parameter on OpenClaw/Feishu).
+`browse_templates` now returns a **Feishu-friendly Markdown table**:
+- The first column is a remote image thumbnail
+- Each row includes name, price, template ID, and a preview link
+- Send the table output **directly as text** so OpenClaw/Feishu can render it as an interactive card
 
-Tool outputs include a `localImagePath` (workspace file) for every image.
-Use that path as the media attachment. **Showing images is mandatory, not optional.**
+Do **not** unpack the browse result into multiple image messages unless the user explicitly asks for separate images.
 
 ## Generator Output Format (MUST FOLLOW)
 
@@ -42,32 +43,25 @@ This skill uses a **two-step generator pattern**.
 
 ### Step 1: Browse — Show Templates
 
-After calling `browse_templates`, the tool returns JSON with a list of templates.
-Each template has `localImagePath` (cover image downloaded to workspace).
+After calling `browse_templates`, the tool returns one Markdown table string.
 
-For **every** template you MUST:
-1. **Send the cover image as a media attachment** using the `localImagePath`
-2. Include a text caption with: name, price, templateId
+Expected usage:
+1. Send the returned table **as-is**
+2. Ask the user to choose a `Template ID`
 
-Example message flow:
+Example:
 
-```
-[send image: /Users/.../.openclaw/workspace/template_images/template_3_xxx.jpg]
-1. 男士卫衣 (Men's Hoodie) — 💰 $29.9 USD — 模板ID: 3
-
-[send image: /Users/.../.openclaw/workspace/template_images/template_12_xxx.jpg]
-2. 帆布手提袋 (Canvas Tote Bag) — 💰 $19.9 USD — 模板ID: 12
-
-...
-
-告诉我你想选哪个，我来帮你生成效果图！
+```md
+| Image | Product | Price | Template ID | Info | Preview |
+| --- | --- | --- | --- | --- | --- |
+| ![Canvas Tote](https://...) | **Canvas Tote Bag** | **$19.9 USD** | `12` | SKU: tote · Ships: CN | [Open image](https://...) |
 ```
 
 **Rules for Step 1:**
-- MUST send each template's cover image as media — do NOT skip images
-- MUST include price and templateId in text
-- Images are at `localImagePath` in the JSON — already in workspace
-- If sending all images at once is supported, do that; otherwise send one by one
+- MUST keep the browse result in table form
+- MUST preserve the `Template ID` column
+- SHOULD keep the preview link column as fallback when Feishu thumbnail rendering is inconsistent
+- Do NOT convert the browse result into one-message-per-image unless the user asks
 
 ### Step 2: Generation Complete — Show Preview + Purchase Link
 
@@ -85,7 +79,7 @@ Example:
 [send image: /Users/.../.openclaw/workspace/previews/leewow_preview_task_xxx.jpg]
 
 你的定制效果图出来啦 🎉
-🛒 点击下单购买: https://leewow.com/h5/preview?taskId=xxx&skid=...&sig=...
+🛒 点击下单购买: https://leewow.com/claw/preview/gen_xxx?skid=...&sig=...
 
 喜欢吗？如果想调整或者试试其他产品，告诉我！
 ```
@@ -97,11 +91,12 @@ Example:
 
 ### Common Mistakes to AVOID
 
-❌ Using `![image](path)` markdown — Feishu can't render local paths this way
-❌ Just saying "完成啦！" and describing the product in text without sending the image
+❌ Breaking `browse_templates` into many standalone image messages when the intended result is a table
+❌ Using `![image](local_path)` markdown for generated preview images — local paths still need media sending
+❌ Just saying "完成啦！" and describing the product in text without sending the generated preview image
 ❌ Omitting the purchase/order link
-❌ Sending a table/list instead of actual images
-❌ Saying "图片已下载到本地" without actually sending the image to the user
+❌ Dropping the `Template ID` column from the browse table
+❌ Saying "图片已下载到本地" without actually sending the generated preview image
 
 ## Prerequisites
 
@@ -144,7 +139,7 @@ python3 scripts/cos_presign.py "https://bucket.cos.region.myqcloud.com/key.png" 
 # With custom expiration (e.g., 1 hour = 3600 seconds)
 python3 scripts/cos_presign.py "COS_URL" --expired 3600
 
-# Use with get_status to get presigned preview URL
+# Use with get_generation_status to get presigned preview URL
 python3 scripts/get_status.py {taskId} --presign --json
 ```
 
@@ -152,7 +147,7 @@ python3 scripts/get_status.py {taskId} --presign --json
 
 ## Typical Flow (Generator Pattern)
 
-1. **Browse (Step 1)** — Call `browse_templates` → get JSON with localImagePath for each template → **send each cover image as media** + text caption (name, price, ID) → ask user to pick
+1. **Browse (Step 1)** — Call `browse_templates` → get a Markdown table with image column / price / template ID / preview link → send the table directly → ask user to pick
 2. **Upload** — User provides an image (must be in workspace `~/.openclaw/workspace/`)
 3. **Generate** — Call `generate_preview` → get taskId → immediately proceed to step 4
 4. **Poll** — Call `get_generation_status` with `poll=true` → wait for COMPLETED
@@ -165,13 +160,13 @@ python3 scripts/get_status.py {taskId} --presign --json
 Browse available product templates.
 
 ```bash
-python3 scripts/browse.py --count 3 --json
+python3 scripts/browse.py --count 5
 ```
 
 Options:
 - `--category`: Filter by category (bag, accessory, home, apparel)
-- `--count`: Number of results (1-5, default 3)
-- `--json`: Output JSON format (includes image URLs)
+- `--count`: Number of rows in the table (1-10, default 5)
+- `--json`: Optional debug / compatibility mode that returns structured JSON
 
 ### generate_preview
 
@@ -190,7 +185,7 @@ Options:
 
 **Returns**: Task ID for status polling. Generation is async (~30-60s).
 
-### get_status
+### get_generation_status
 
 Check generation status and download preview image.
 
@@ -212,42 +207,34 @@ Options:
 - Never expose or log the `CLAW_SK` value. When confirming configuration, only show the last 4 characters.
 - Input images **must** be in workspace directory for the agent to access them
 - Preview images are automatically saved to `workspace/previews/`
-- Limit browse results to 20 templates maximum per request
+- Limit browse results to 10 templates maximum per request
 
 ## Examples
 
 ```text
 User: "I want to make a custom gift for my friend"
-→ browse_templates → for each template: send cover image as media + text caption
+→ browse_templates → send the returned table directly
 → user picks → generate_preview → get_generation_status --poll
 → send preview image as media + purchaseUrl in text
 
 User: "Turn this photo into a phone case"
-→ browse_templates --category phone → send images as media → user picks
+→ browse_templates --category phone → send the returned table directly → user picks
 → generate_preview → get_generation_status --poll
 → send preview image as media + purchaseUrl in text
 
 User: "Show me what products I can customize"
-→ browse_templates → send ALL template images as media with captions
+→ browse_templates → send the returned table
 ```
 
 ## Output Structure
 
 ### browse_templates
-```json
-[
-  {
-    "index": 1,
-    "templateId": 3,
-    "name": "Men's Hoodie",
-    "price": "**$29.9 USD**",
-    "localImagePath": "/Users/.../.openclaw/workspace/template_images/template_3_xxx.jpg",
-    "remoteImageUrl": "https://...",
-    "skuType": "hoodie"
-  }
-]
+```md
+| Image | Product | Price | Template ID | Info | Preview |
+| --- | --- | --- | --- | --- | --- |
+| ![Men's Hoodie](https://...) | **Men's Hoodie** | **$29.9 USD** | `3` | SKU: hoodie · Ships: CN | [Open image](https://...) |
 ```
-→ Agent sends `localImagePath` as media attachment + text caption per template.
+→ Agent sends the markdown table directly so Feishu can render it as a card/table.
 
 ### generate_preview --json
 ```json
@@ -260,12 +247,12 @@ User: "Show me what products I can customize"
 }
 ```
 
-### get_status --json (completed)
+### get_generation_status --json (completed)
 ```json
 {
   "taskId": "task_xxx",
   "status": "COMPLETED",
-  "purchaseUrl": "https://leewow.com/h5/preview?taskId=xxx&skid=...&sig=...",
+  "purchaseUrl": "https://leewow.com/claw/preview/gen_xxx?skid=...&sig=...",
   "localImagePath": "/Users/.../.openclaw/workspace/previews/leewow_preview_task_xxx.jpg"
 }
 ```

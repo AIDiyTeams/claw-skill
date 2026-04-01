@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Query generation task status and download preview image.
 
 API response structure (GET /claw/task/{taskId}):
