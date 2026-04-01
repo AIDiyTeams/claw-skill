@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upload image to COS, call /claw/generate, output Markdown preview card."""
+"""Upload image to COS, call /claw/generate, output structured JSON."""
 
 import argparse
 import json
@@ -70,27 +70,6 @@ def generate_preview(image_path: str, template_id: int,
     result = data.get("data", {})
     result["_success"] = True
     return result
-
-
-def format_generate_result(result: dict) -> str:
-    """Format generation trigger result. Guides the agent to poll for completion."""
-    task_id = result.get("taskId", "unknown")
-    status = result.get("status", "PENDING")
-    estimated = result.get("estimatedSeconds", 45)
-    template_id = result.get("templateId", "?")
-
-    return "\n".join([
-        f"正在生成效果图 ⏳ (约{estimated}秒)",
-        f"任务ID: {task_id} | 模板: #{template_id} | 状态: {status}",
-        "",
-        "[AGENT_INSTRUCTION]",
-        f"Call get_generation_status with task_id={task_id} and poll=true.",
-        "When COMPLETED, you MUST:",
-        "1. Send the preview image as a MEDIA ATTACHMENT (localImagePath from the result)",
-        "2. Include the purchaseUrl in the text message",
-        "Do NOT use ![markdown] syntax — send the actual image file via message media.",
-        "[/AGENT_INSTRUCTION]",
-    ])
 
 
 def _safe_result(result: dict) -> dict:

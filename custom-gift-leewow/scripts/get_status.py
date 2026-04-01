@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-"""Query generation task status and download preview image.
+"""Query generation task status and output structured JSON.
 
 API response structure (GET /claw/task/{taskId}):
 {
@@ -144,57 +144,13 @@ def poll_until_complete(task_id: str, timeout: int = 120, download_image: bool =
     return {"error": f"Timeout after {timeout}s", "taskId": task_id, "status": "TIMEOUT"}
 
 
-def format_result(result: dict) -> str:
-    """Human-readable text output (used when --json is not passed)."""
-    status = result.get("status", "UNKNOWN")
-    task_id = result.get("taskId", "unknown")
-    template_id = result.get("templateId", "?")
-
-    if status == "COMPLETED":
-        image_path = result.get("localImagePath")
-        purchase_url = result.get("purchaseUrl")
-
-        lines = [
-            "[AGENT_INSTRUCTION]",
-            "1. Send the preview image to the user as a MEDIA ATTACHMENT:",
-        ]
-        if image_path:
-            lines.append(f"   File: {image_path}")
-        lines.extend([
-            "2. Then send a text message with the purchase link and a friendly note.",
-            "Do NOT use ![markdown](image) syntax — Feishu cannot render local paths that way.",
-            "Use the message tool with media parameter to send the image file.",
-            "[/AGENT_INSTRUCTION]",
-            "",
-            "你的定制效果图出来啦 🎉",
-        ])
-        if purchase_url:
-            lines.append(f"🛒 点击下单购买: {purchase_url}")
-        lines.append(f"📦 模板ID: {template_id} | 任务ID: {task_id}")
-        lines.append("")
-        lines.append("喜欢吗？如果想调整或者试试其他产品，告诉我！")
-        return "\n".join(lines)
-
-    if status == "FAILED":
-        error_msg = result.get("errorMessage", "Unknown error")
-        return (f"## 生成失败 ❌\n\n"
-                f"**任务ID**: `{task_id}`\n"
-                f"**原因**: {error_msg}\n\n"
-                f"可以换张图片或者换个模板再试一次。")
-
-    return (f"## 正在生成中 ⏳\n\n"
-            f"**任务ID**: `{task_id}` | **模板**: #{template_id}\n"
-            f"**状态**: {status}\n\n"
-            f"请稍等，正在努力生成效果图...")
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Query Leewow generation task status")
     parser.add_argument("task_id", help="Task ID from generate_preview")
     parser.add_argument("--poll", action="store_true", help="Poll until complete")
     parser.add_argument("--timeout", type=int, default=120, help="Poll timeout in seconds")
     parser.add_argument("--no-download", action="store_true", help="Skip downloading preview image")
-    parser.add_argument("--json", action="store_true", help="Output JSON instead of text")
+    parser.add_argument("--json", action="store_true", help="(compat) output JSON")
     args = parser.parse_args()
 
     if args.poll:
@@ -202,7 +158,4 @@ if __name__ == "__main__":
     else:
         result = get_task_status(args.task_id, download_image=not args.no_download)
 
-    if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        print(format_result(result))
+    print(json.dumps(result, ensure_ascii=False, indent=2))
