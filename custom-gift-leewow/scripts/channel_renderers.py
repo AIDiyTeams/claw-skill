@@ -49,6 +49,9 @@ class ChannelRenderer(ABC):
     def render_browse(self, items: Iterable[dict]) -> str:
         raise NotImplementedError
 
+    def render_browse_messages(self, items: Iterable[dict]) -> list[str]:
+        return [self.render_browse(items)]
+
 
 class PlainTextRenderer(ChannelRenderer):
     channel = "plain"
@@ -75,32 +78,28 @@ class FeishuRenderer(ChannelRenderer):
     channel = "feishu"
 
     def render_browse(self, items: Iterable[dict]) -> str:
+        messages = self.render_browse_messages(items)
+        return "\n\n".join(messages)
+
+    def render_browse_messages(self, items: Iterable[dict]) -> list[str]:
         rows = list(items)
         if not rows:
-            return "No matching templates found. Try a different category or browse all."
+            return ["No matching templates found. Try a different category or browse all."]
 
-        lines = [
-            f"## Available Product Templates ({len(rows)} results)",
-            "",
-            "| Image | Product | Price | Template ID | Info | Preview |",
-            "| --- | --- | --- | --- | --- | --- |",
-        ]
-
+        messages: list[str] = []
         for item in rows:
-            image_cell = self._format_image_cell(item["name"], item["coverImage"])
-            preview_link = self._format_preview_link(item["coverImage"])
+            description = item["description"] or item["info"]
             price_display = str(item["price"]).replace("|", "\\|")
-            lines.append(
-                "| "
-                f"{image_cell} | "
-                f"**{escape_table_cell(item['name'])}** | "
-                f"{price_display} | "
-                f"`{item['templateId']}` | "
-                f"{escape_table_cell(item['info'])} | "
-                f"{preview_link} |"
-            )
-
-        return "\n".join(lines)
+            lines = [
+                f"## {escape_table_cell(item['name'])}",
+                description,
+                f"**Template ID:** `{item['templateId']}`",
+                f"**Price:** {price_display}",
+            ]
+            if item["coverImage"]:
+                lines.extend(["", f"![{escape_table_cell(item['name'])}]({item['coverImage']})"])
+            messages.append("\n".join(lines))
+        return messages
 
     @staticmethod
     def _format_image_cell(name: str, cover_url: str) -> str:

@@ -1,6 +1,6 @@
 ---
 name: custom-gift-leewow
-version: 1.0.10
+version: 1.0.11
 description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
@@ -56,37 +56,36 @@ Create personalized gifts and custom products powered by AI. This skill provides
 
 ## Browse Output Format
 
-`browse_templates` now returns a **Feishu-friendly Markdown table**:
-- The first column is a remote image thumbnail
-- Each row includes name, price, template ID, and a preview link
-- The agent should send the returned table output **directly as text** so OpenClaw/Feishu can render it as an interactive card
-
-Do **not** unpack the browse result into multiple image messages unless the user explicitly asks for separate images.
+`browse_templates` now returns delivery JSON with `messagesMarkdown`:
+- Each `messagesMarkdown` item is one final user-facing Markdown message
+- For Feishu, each message shows one product
+- Layout goal: bold product name, smaller description underneath, then one large image below
+- The agent should send each `messagesMarkdown` item directly, in order, as separate messages
 
 ## Priority Rule
 
 For the current production channel (`feishu`):
-- `browse_templates` MUST be displayed as one markdown table message
-- The table MUST keep the `Image` column and the images must stay inside the table cells
-- For browse requests, the agent MUST reply with the returned table content verbatim unless the user explicitly asks for another format
+- `browse_templates` MUST be displayed as multiple product messages, one product per message
+- Each browse message MUST keep the product image inside the same message, below the title/description
+- For browse requests, the agent MUST send each returned `messagesMarkdown` item verbatim unless the user explicitly asks for another format
 - For browse requests, the agent MUST NOT answer with a status summary, tool summary, or explanation of what the table contains
-- The agent MUST NOT explain that "the skill does not require a table" because the current skill explicitly requires the browse result to stay in table form
+- The agent MUST NOT explain that "the skill does not require a table" because the current skill explicitly defines the browse message layout
 - The agent MUST NOT cite the generated-preview media rule as justification for changing the browse layout
 
 Important distinction:
-- `browse_templates` = one table message with images in the table
+- `browse_templates` = multiple markdown messages, one per product
 - `get_generation_status` = generated preview image sent as media attachment, then `replyMarkdown` sent as text
 
 ## Verbatim Contract
 
-For `browse_templates`, the returned string is already the final user-facing reply.
+For `browse_templates`, the returned `messagesMarkdown` array already contains the final user-facing replies.
 
-The next assistant message after calling `browse_templates` MUST:
-- be exactly the returned table content
-- not add any explanation before the table
-- not add any explanation after the table
-- not summarize, restyle, translate, or split the table
-- not say that `browse_templates` has "returned", "generated", or "already displayed" a table
+The next assistant messages after calling `browse_templates` MUST:
+- send each `messagesMarkdown` item exactly as returned
+- preserve order
+- not add any explanation before or after any item
+- not summarize, restyle, translate, or merge the items
+- not say that `browse_templates` has "returned", "generated", or "already displayed" the layout
 
 Only one exception:
 - if the user explicitly asks for another format, the agent may transform it
@@ -111,28 +110,28 @@ This skill uses a **two-step generator pattern**.
 
 ### Step 1: Browse — Show Templates
 
-After calling `browse_templates`, the tool returns one Markdown table string.
+After calling `browse_templates`, the tool returns one JSON object with `messagesMarkdown`.
 
 Expected usage:
-1. Send the returned table **as-is**
-2. Ask the user to choose a `Template ID`
+1. Send each `messagesMarkdown` item **as-is**
+2. After the last item, ask the user to choose a `Template ID`
 
 Example:
 
-```md
-| Image | Product | Price | Template ID | Info | Preview |
-| --- | --- | --- | --- | --- | --- |
-| ![Canvas Tote](https://...) | **Canvas Tote Bag** | **$19.9 USD** | `12` | SKU: tote · Ships: CN | [Open image](https://...) |
+```json
+{
+  "format": "multi_message_markdown",
+  "messagesMarkdown": [
+    "## Canvas Tote Bag\nDurable everyday tote for gifts and custom prints.\n**Template ID:** `12`\n**Price:** **$19.9 USD**\n\n![Canvas Tote](https://...)"
+  ]
+}
 ```
 
 **Rules for Step 1:**
-- MUST keep the browse result in table form
-- MUST send exactly one browse message for the table unless the user explicitly asks for a different format
-- MUST preserve the `Template ID` column
-- MUST preserve the `Image` column with image markdown inside the table
-- MUST send the returned table verbatim instead of rewriting it
-- SHOULD keep the preview link column as fallback when Feishu thumbnail rendering is inconsistent
-- Do NOT convert the browse result into one-message-per-image unless the user asks
+- MUST send each returned browse message in order
+- MUST preserve the large-image layout inside each message
+- MUST send the returned markdown verbatim instead of rewriting it
+- Do NOT merge all products back into one summary table
 - Do NOT rewrite the returned layout for the current channel unless the user explicitly asks to change the presentation
 
 ### Step 2: Generation Complete — Show Preview + Purchase Link
@@ -164,13 +163,13 @@ Example:
 
 ### Common Mistakes to AVOID
 
-❌ Breaking `browse_templates` into many standalone image messages when the intended result is a table
-❌ Claiming that the skill doc does not require a table for browse results
+❌ Collapsing the returned per-product messages into one summary table
+❌ Claiming that the skill doc does not require the defined browse layout
 ❌ Applying the generated-preview media rule to `browse_templates`
-❌ Adding commentary like "以下是可选模板" before the returned browse table
-❌ Adding follow-up guidance after the returned browse table unless the user asked for it
-❌ Saying "browse_templates 已成功返回..." instead of sending the table itself
-❌ Saying "表格已在上面显示" when the table was not actually sent in the current reply
+❌ Adding commentary like "以下是可选模板" before the returned browse messages
+❌ Adding follow-up guidance between returned browse messages unless the user asked for it
+❌ Saying "browse_templates 已成功返回..." instead of sending the messages themselves
+❌ Saying "表格已在上面显示" when the defined browse layout was not actually sent in the current reply
 ❌ Using `![image](local_path)` markdown for generated preview images — local paths still need media sending
 ❌ Just saying "完成啦！" and describing the product in text without sending the generated preview image
 ❌ Omitting the purchase/order link
@@ -226,7 +225,7 @@ python3 scripts/get_status.py {taskId} --presign --json
 
 ## Typical Flow (Generator Pattern)
 
-1. **Browse (Step 1)** — Call `browse_templates` → get a Markdown table with image column / price / template ID / preview link → send the table directly → ask user to pick
+1. **Browse (Step 1)** — Call `browse_templates` → get `messagesMarkdown` → send each message directly in order → ask user to pick
 2. **Upload** — User provides an image (must be in workspace `~/.openclaw/workspace/`)
 3. **Generate** — Call `generate_preview` → get taskId → immediately proceed to step 4
 4. **Poll** — Call `get_generation_status` with `poll=true` → wait for COMPLETED
@@ -239,13 +238,14 @@ python3 scripts/get_status.py {taskId} --presign --json
 Browse available product templates.
 
 ```bash
-python3 scripts/browse.py --count 5
+python3 scripts/browse.py --count 5 --json
 ```
 
 Options:
 - `--category`: Filter by category (bag, accessory, home, apparel)
-- `--count`: Number of rows in the table (1-10, default 5)
-- `--json`: Optional debug / compatibility mode that returns structured JSON
+- `--count`: Number of products to return (1-10, default 5)
+- `--json`: Output delivery JSON with `messagesMarkdown`
+- `--raw-json`: Debug mode that returns raw template data
 
 ### generate_preview
 
@@ -293,28 +293,32 @@ The agent should use `replyMarkdown` as the final text reply content.
 
 ```text
 User: "I want to make a custom gift for my friend"
-→ browse_templates → send the returned table directly
+→ browse_templates → send each returned browse message directly
 → user picks → generate_preview → get_generation_status --poll
 → send preview image as media + send `replyMarkdown` directly
 
 User: "Turn this photo into a phone case"
-→ browse_templates --category phone → send the returned table directly → user picks
+→ browse_templates --category phone → send each returned browse message directly → user picks
 → generate_preview → get_generation_status --poll
 → send preview image as media + send `replyMarkdown` directly
 
 User: "Show me what products I can customize"
-→ browse_templates → send the returned table
+→ browse_templates → send each returned browse message
 ```
 
 ## Output Structure
 
 ### browse_templates
-```md
-| Image | Product | Price | Template ID | Info | Preview |
-| --- | --- | --- | --- | --- | --- |
-| ![Men's Hoodie](https://...) | **Men's Hoodie** | **$29.9 USD** | `3` | SKU: hoodie · Ships: CN | [Open image](https://...) |
+```json
+{
+  "format": "multi_message_markdown",
+  "messageCount": 1,
+  "messagesMarkdown": [
+    "## Men's Hoodie\nClassic hoodie with soft fleece lining.\n**Template ID:** `3`\n**Price:** **$29.9 USD**\n\n![Men's Hoodie](https://...)"
+  ]
+}
 ```
-→ Agent sends the markdown table directly so Feishu can render it as a card/table.
+→ Agent sends each `messagesMarkdown` item directly as one message.
 
 ### generate_preview --json
 ```json
@@ -338,4 +342,4 @@ User: "Show me what products I can customize"
 ```
 → Agent sends `localImagePath` as media attachment + `replyMarkdown` as text.
 
-Version Marker: custom-gift-leewow@1.0.10
+Version Marker: custom-gift-leewow@1.0.11

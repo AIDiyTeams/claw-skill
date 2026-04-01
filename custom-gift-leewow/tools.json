@@ -2,9 +2,9 @@
   "tools": [
     {
       "name": "browse_templates",
-      "description": "Browse Leewow product templates. Python returns the final user-facing markdown table. The agent should send that markdown directly as the browse reply. FEISHU HARD RULE: your next assistant message MUST equal the returned browse_templates content verbatim, as exactly one markdown table message with the images inside the table cells. Do NOT add text before it, after it, or rewrite it. Do NOT say 'browse_templates returned/generated a table' or summarize what the table contains. Do NOT fan out template covers as separate media messages, and do NOT cite preview-image media rules for browse results.",
+      "description": "Browse Leewow product templates. Python returns delivery JSON containing messagesMarkdown. The agent should send each messagesMarkdown item as a separate message, in order, verbatim. FEISHU FORMAT: one product per message, with bold product name, a smaller description underneath, and one large image below. Do NOT add status summaries or explain what the messages contain.",
       "executor": "bash",
-      "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}} --channel '{{channel}}'",
+      "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}} --channel '{{channel}}' --json",
       "parameters": {
         "type": "object",
         "properties": {

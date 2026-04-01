@@ -139,8 +139,28 @@ def browse_templates(category: str = None, count: int = 5, channel: str = "feish
     return renderer.render_browse(rows)
 
 
+def browse_templates_payload(category: str = None, count: int = 5, channel: str = "feishu") -> dict:
+    """Return JSON payload for agent delivery.
+
+    For Feishu, the agent should send each messagesMarkdown entry as a separate
+    message in order, verbatim.
+    """
+    rows = _build_browse_items(category=category, count=count)
+    if rows and rows[0].get("error"):
+        return {"error": rows[0]["error"]}
+
+    renderer = get_channel_renderer(channel)
+    messages = renderer.render_browse_messages(rows)
+    return {
+        "channel": channel,
+        "format": "multi_message_markdown",
+        "messageCount": len(messages),
+        "messagesMarkdown": messages,
+    }
+
+
 def browse_templates_json(category: str = None, count: int = 5) -> list:
-    """Return JSON-serializable template data with optional local image cache."""
+    """Return raw JSON-serializable template data with optional local image cache."""
     templates = _fetch_templates(category=category, count=count)
     if templates and templates[0].get("error"):
         return templates
@@ -172,10 +192,13 @@ if __name__ == "__main__":
     parser.add_argument("--category", type=str, default=None)
     parser.add_argument("--count", type=int, default=5)
     parser.add_argument("--channel", type=str, default="feishu", help="Reserved output channel renderer")
-    parser.add_argument("--json", action="store_true", help="Output JSON instead of Markdown table")
+    parser.add_argument("--json", action="store_true", help="Output agent delivery JSON instead of markdown")
+    parser.add_argument("--raw-json", action="store_true", help="Output raw template JSON for debugging")
     args = parser.parse_args()
 
-    if args.json:
+    if args.raw_json:
         print(json.dumps(browse_templates_json(category=args.category, count=args.count), ensure_ascii=False, indent=2))
+    elif args.json:
+        print(json.dumps(browse_templates_payload(category=args.category, count=args.count, channel=args.channel), ensure_ascii=False, indent=2))
     else:
         print(browse_templates(category=args.category, count=args.count, channel=args.channel))
