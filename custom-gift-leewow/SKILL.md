@@ -1,11 +1,11 @@
 ---
 name: custom-gift-leewow
-version: 1.0.15
+version: 1.0.17
 description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
-  Tools: browse_templates (JSON with per-product markdown messages), generate_preview,
-  get_generation_status. Agent forwards script output verbatim. Requires CLAW_SK.
+  Tools: browse_templates (NDJSON stream of per-product Feishu card messageToolCalls), generate_preview,
+  get_generation_status. Requires CLAW_SK.
   If ClawHub is rate-limited,
   install from GitHub:
   https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
@@ -50,7 +50,7 @@ Create personalized gifts and custom products powered by AI. This skill provides
 
 ## What the agent does (keep it minimal)
 
-**Browse** — `browse_templates` returns JSON. Execute `messageToolCalls` exactly, in order, with OpenClaw `message` tool. After all sends complete, reply with **`NO_REPLY`**. `messagesMarkdown` is for inspection/debugging only; do not use it when `messageToolCalls` is present.
+**Browse** — `browse_templates` prints **NDJSON** (one JSON object per stdout line). For each line with `"type":"browse_product"`, run that line’s `messageToolCalls` with the `message` tool **immediately**—do not buffer until the script exits. For Feishu, those calls contain real card payloads, so the user should see card-style product entries rather than one merged plain-text bubble. When you see `"type":"browse_complete"`, reply **`NO_REPLY`**. On `"type":"browse_error"`, tell the user the error. This ordering lets product cards appear as each item is ready instead of waiting for the whole list.
 
 **Preview** — `get_generation_status` also returns `messageToolCalls`. Execute them exactly, in order, with OpenClaw `message` tool, then reply with **`NO_REPLY`**. Do not replace that with a plain description or with markdown that points at the local file instead of real media.
 
@@ -107,7 +107,7 @@ python3 scripts/get_status.py {taskId} --presign --json
 
 ## Typical Flow (Generator Pattern)
 
-1. **Browse** — `browse_templates` → execute returned `messageToolCalls` in order → final assistant reply is `NO_REPLY` → user picks a `Template ID` when ready
+1. **Browse** — `browse_templates` → consume NDJSON lines; execute each `browse_product`’s `messageToolCalls` as it arrives → `browse_complete` → reply `NO_REPLY` → user picks a `Template ID` when ready
 2. **Upload** — User provides an image (must be in workspace `~/.openclaw/workspace/`)
 3. **Generate** — Call `generate_preview` → get taskId → immediately proceed to step 4
 4. **Poll** — Call `get_generation_status` with `poll=true` → wait for COMPLETED
@@ -120,13 +120,14 @@ python3 scripts/get_status.py {taskId} --presign --json
 Browse available product templates.
 
 ```bash
-python3 scripts/browse.py --count 5 --json
+python3 scripts/browse.py --count 5 --json --stream
 ```
 
 Options:
 - `--category`: Filter by category (bag, accessory, home, apparel)
 - `--count`: Number of products to return (1-10, default 5)
-- `--json`: Output delivery JSON with `messagesMarkdown`
+- `--json --stream`: NDJSON stream for agents (`browse_product` lines + `browse_complete`; default tool command)
+- `--json` (without `--stream`): Single JSON object; Feishu image steps run in parallel across products
 - `--raw-json`: Debug mode that returns raw template data
 
 ### generate_preview
@@ -175,42 +176,38 @@ The agent should use `replyMarkdown` as the final text reply content.
 
 ```text
 User: "I want to make a custom gift for my friend"
-→ browse_templates → execute returned `messageToolCalls`
+→ browse_templates → each NDJSON `browse_product` line → `message` tool → `browse_complete` → `NO_REPLY`
 → user picks → generate_preview → get_generation_status --poll
 → use `message` tool to send preview image as media + `replyMarkdown` → return `NO_REPLY`
 
 User: "Turn this photo into a phone case"
-→ browse_templates --category phone → execute returned `messageToolCalls` → user picks
+→ browse_templates --category phone → NDJSON product lines as above → user picks
 → generate_preview → get_generation_status --poll
 → use `message` tool to send preview image as media + `replyMarkdown` → return `NO_REPLY`
 
 User: "Show me what products I can customize"
-→ browse_templates → send each returned browse message
+→ browse_templates → execute each NDJSON `browse_product` line, then `NO_REPLY` on `browse_complete`
 ```
 
 ## Output Structure
 
-### browse_templates
+### browse_templates (stdout: multiple lines)
+
+Line 1..N (`browse_product` — emit as soon as that product is ready):
+
 ```json
-{
-  "deliveryMode": "message_tool_sequential",
-  "format": "multi_message_markdown",
-  "messageCount": 1,
-  "messageToolCalls": [
-    {
-      "action": "send",
-      "channel": "feishu",
-      "message": "## Men's Hoodie\n…"
-    }
-  ],
-  "feishuImagesResolved": false,
-  "messagesMarkdown": [
-    "## Men's Hoodie\n…\n**Template ID:** `3`\n**Price:** **$29.9 USD**\n\n![Men's Hoodie](https://...)"
-  ],
-  "finalAssistantReply": "NO_REPLY"
-}
+{"type":"browse_product","chunkIndex":1,"chunkTotal":8,"channel":"feishu","messageToolCalls":[{"action":"send","channel":"feishu","card":{"schema":"2.0","body":{"elements":[...]}}}]}
 ```
-→ Agent executes `messageToolCalls` exactly, then returns `NO_REPLY` (`messagesMarkdown` / `feishuImagesResolved` are diagnostic only).
+
+Final line (`browse_complete`):
+
+```json
+{"type":"browse_complete","messageCount":8,"feishuImagesResolved":true,"finalAssistantReply":"NO_REPLY","format":"browse_ndjson"}
+```
+
+→ Execute each `browse_product` line’s `messageToolCalls` as soon as that line appears; after `browse_complete`, return `NO_REPLY`.
+
+Optional one-shot (no `--stream` on CLI): legacy single JSON with `messageToolCalls` / `messagesMarkdown` for debugging only.
 
 ### generate_preview --json
 ```json
@@ -249,4 +246,4 @@ User: "Show me what products I can customize"
 ```
 → Agent executes `messageToolCalls` exactly, then returns `NO_REPLY`.
 
-Version Marker: custom-gift-leewow@1.0.15
+Version Marker: custom-gift-leewow@1.0.17

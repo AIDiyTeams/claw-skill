@@ -2,9 +2,9 @@
   "tools": [
     {
       "name": "browse_templates",
-      "description": "Fetch customizable product templates. Returns JSON with messageToolCalls plus messagesMarkdown. Execute messageToolCalls exactly, in order, using OpenClaw message tool in the current conversation; then reply with NO_REPLY. Treat messagesMarkdown as debug/inspection output only. Do not merge product messages into one normal assistant bubble. If Feishu app credentials are configured, Python resolves image markdown to Feishu image keys; otherwise Python safely degrades image blocks to preview links instead of broken image markdown.",
+      "description": "Fetch customizable product templates. Tool stdout is NDJSON (newline-delimited JSON): one object per line. For each line where type is browse_product, execute that line's messageToolCalls immediately with the OpenClaw message tool (do not wait for later lines). For Feishu, each call is a real card payload, not plain markdown text. After the line where type is browse_complete, reply NO_REPLY. If a line has type browse_error, surface the error to the user. Python emits each browse_product as soon as that product's card data is ready so cards can appear progressively. Single-object JSON payloads are not used for this tool.",
       "executor": "bash",
-      "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}} --channel '{{channel}}' --json",
+      "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}} --channel '{{channel}}' --json --stream",
       "parameters": {
         "type": "object",
         "properties": {

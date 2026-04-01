@@ -13,6 +13,7 @@ import json
 import mimetypes
 import os
 import re
+import threading
 from pathlib import Path
 from typing import Dict
 
@@ -68,6 +69,7 @@ class FeishuMarkdownImageResolver:
         self.token: str | None = None
         self.image_cache = _load_cache()
         self._enabled = bool(self.app_id and self.app_secret)
+        self._lock = threading.Lock()
 
     def resolve(self, markdown: str) -> tuple[str, bool]:
         """Return (markdown, True) if any ![](...) was replaced with image_key."""
@@ -106,30 +108,47 @@ class FeishuMarkdownImageResolver:
         out = MARKDOWN_IMAGE_RE.sub(replace, markdown)
         return out, any_changed
 
+    def resolve_image_ref(self, image_ref: str) -> str | None:
+        """Resolve one local/remote image reference to a Feishu image_key.
+
+        Returns None when credentials are unavailable or the upload fails.
+        """
+        if not self._enabled:
+            return None
+        try:
+            token = self._get_token()
+            return self._upload_image(token, image_ref)
+        except Exception:
+            return None
+
     def _get_token(self) -> str:
         if self.token:
             return self.token
-        response = requests.post(
-            f"{self.domain}/open-apis/auth/v3/tenant_access_token/internal",
-            json={"app_id": self.app_id, "app_secret": self.app_secret},
-            timeout=30,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        if payload.get("code") != 0:
-            raise RuntimeError(f"Token API failed: {json.dumps(payload, ensure_ascii=False)}")
-        token = payload.get("tenant_access_token")
-        if not token:
-            raise RuntimeError("tenant_access_token missing from Feishu response")
-        self.token = str(token)
-        return self.token
+        with self._lock:
+            if self.token:
+                return self.token
+            response = requests.post(
+                f"{self.domain}/open-apis/auth/v3/tenant_access_token/internal",
+                json={"app_id": self.app_id, "app_secret": self.app_secret},
+                timeout=30,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get("code") != 0:
+                raise RuntimeError(f"Token API failed: {json.dumps(payload, ensure_ascii=False)}")
+            token = payload.get("tenant_access_token")
+            if not token:
+                raise RuntimeError("tenant_access_token missing from Feishu response")
+            self.token = str(token)
+            return self.token
 
     def _upload_image(self, token: str, image_ref: str) -> str:
         image_bytes, filename = self._load_image_bytes(image_ref)
         cache_key = hashlib.sha256(image_bytes).hexdigest()
-        cached = self.image_cache.get(cache_key)
-        if cached:
-            return cached
+        with self._lock:
+            cached = self.image_cache.get(cache_key)
+            if cached:
+                return cached
 
         content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
         response = requests.post(
@@ -147,8 +166,12 @@ class FeishuMarkdownImageResolver:
         if not image_key:
             raise RuntimeError(f"Image upload missing image_key: {json.dumps(payload, ensure_ascii=False)}")
 
-        self.image_cache[cache_key] = image_key
-        _save_cache(self.image_cache)
+        with self._lock:
+            cached = self.image_cache.get(cache_key)
+            if cached:
+                return cached
+            self.image_cache[cache_key] = image_key
+            _save_cache(self.image_cache)
         return image_key
 
     @staticmethod
