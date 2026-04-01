@@ -1,11 +1,12 @@
 ---
 name: custom-gift-leewow
-version: 1.0.17
+version: 1.0.18
 description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
-  Tools: browse_templates (NDJSON stream of per-product Feishu card messageToolCalls), generate_preview,
-  get_generation_status. Requires CLAW_SK.
+  Tools: browse_templates (NDJSON stream of per-product Feishu display payloads),
+  generate_preview, get_generation_status. Display is delegated to the
+  `feishu-card-display` skill. Requires CLAW_SK.
   If ClawHub is rate-limited,
   install from GitHub:
   https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
@@ -50,9 +51,9 @@ Create personalized gifts and custom products powered by AI. This skill provides
 
 ## What the agent does (keep it minimal)
 
-**Browse** — `browse_templates` prints **NDJSON** (one JSON object per stdout line). For each line with `"type":"browse_product"`, run that line’s `messageToolCalls` with the `message` tool **immediately**—do not buffer until the script exits. For Feishu, those calls contain real card payloads, so the user should see card-style product entries rather than one merged plain-text bubble. When you see `"type":"browse_complete"`, reply **`NO_REPLY`**. On `"type":"browse_error"`, tell the user the error. This ordering lets product cards appear as each item is ready instead of waiting for the whole list.
+**Browse** — `browse_templates` prints **NDJSON** (one JSON object per stdout line). For each line with `"type":"browse_product"`, immediately follow the `feishu-card-display` skill and execute that line’s `messageToolCalls` with the `message` tool. Do not buffer until the script exits. When you see `"type":"browse_complete"`, reply **`NO_REPLY`**. On `"type":"browse_error"`, tell the user the error. This ordering lets product entries appear as each item is ready instead of waiting for the whole list.
 
-**Preview** — `get_generation_status` also returns `messageToolCalls`. Execute them exactly, in order, with OpenClaw `message` tool, then reply with **`NO_REPLY`**. Do not replace that with a plain description or with markdown that points at the local file instead of real media.
+**Preview** — `get_generation_status` also returns `displaySkill: "feishu-card-display"` plus `messageToolCalls`. Follow the `feishu-card-display` skill and execute those calls exactly, in order, then reply with **`NO_REPLY`**.
 
 ## Prerequisites
 
@@ -107,11 +108,11 @@ python3 scripts/get_status.py {taskId} --presign --json
 
 ## Typical Flow (Generator Pattern)
 
-1. **Browse** — `browse_templates` → consume NDJSON lines; execute each `browse_product`’s `messageToolCalls` as it arrives → `browse_complete` → reply `NO_REPLY` → user picks a `Template ID` when ready
+1. **Browse** — `browse_templates` → consume NDJSON lines; for each `browse_product`, use `feishu-card-display` rules to execute `messageToolCalls` immediately → `browse_complete` → reply `NO_REPLY` → user picks a `Template ID` when ready
 2. **Upload** — User provides an image (must be in workspace `~/.openclaw/workspace/`)
 3. **Generate** — Call `generate_preview` → get taskId → immediately proceed to step 4
 4. **Poll** — Call `get_generation_status` with `poll=true` → wait for COMPLETED
-5. **Display** — execute returned `messageToolCalls` in order → final assistant reply is `NO_REPLY`
+5. **Display** — use `feishu-card-display` rules to execute returned `messageToolCalls` in order → final assistant reply is `NO_REPLY`
 
 ## Tool Reference
 
@@ -176,17 +177,17 @@ The agent should use `replyMarkdown` as the final text reply content.
 
 ```text
 User: "I want to make a custom gift for my friend"
-→ browse_templates → each NDJSON `browse_product` line → `message` tool → `browse_complete` → `NO_REPLY`
+→ browse_templates → each NDJSON `browse_product` line → follow `feishu-card-display` → `browse_complete` → `NO_REPLY`
 → user picks → generate_preview → get_generation_status --poll
 → use `message` tool to send preview image as media + `replyMarkdown` → return `NO_REPLY`
 
 User: "Turn this photo into a phone case"
-→ browse_templates --category phone → NDJSON product lines as above → user picks
+→ browse_templates --category phone → NDJSON product lines as above via `feishu-card-display` → user picks
 → generate_preview → get_generation_status --poll
 → use `message` tool to send preview image as media + `replyMarkdown` → return `NO_REPLY`
 
 User: "Show me what products I can customize"
-→ browse_templates → execute each NDJSON `browse_product` line, then `NO_REPLY` on `browse_complete`
+→ browse_templates → execute each NDJSON `browse_product` line via `feishu-card-display`, then `NO_REPLY` on `browse_complete`
 ```
 
 ## Output Structure
@@ -196,7 +197,7 @@ User: "Show me what products I can customize"
 Line 1..N (`browse_product` — emit as soon as that product is ready):
 
 ```json
-{"type":"browse_product","chunkIndex":1,"chunkTotal":8,"channel":"feishu","messageToolCalls":[{"action":"send","channel":"feishu","card":{"schema":"2.0","body":{"elements":[...]}}}]}
+{"type":"browse_product","chunkIndex":1,"chunkTotal":8,"channel":"feishu","displaySkill":"feishu-card-display","messageToolCalls":[{"action":"send","channel":"feishu","card":{"schema":"2.0","body":{"elements":[...]}}}]}
 ```
 
 Final line (`browse_complete`):
@@ -205,7 +206,7 @@ Final line (`browse_complete`):
 {"type":"browse_complete","messageCount":8,"feishuImagesResolved":true,"finalAssistantReply":"NO_REPLY","format":"browse_ndjson"}
 ```
 
-→ Execute each `browse_product` line’s `messageToolCalls` as soon as that line appears; after `browse_complete`, return `NO_REPLY`.
+→ Execute each `browse_product` line’s `messageToolCalls` with the `feishu-card-display` rules as soon as that line appears; after `browse_complete`, return `NO_REPLY`.
 
 Optional one-shot (no `--stream` on CLI): legacy single JSON with `messageToolCalls` / `messagesMarkdown` for debugging only.
 
@@ -246,4 +247,4 @@ Optional one-shot (no `--stream` on CLI): legacy single JSON with `messageToolCa
 ```
 → Agent executes `messageToolCalls` exactly, then returns `NO_REPLY`.
 
-Version Marker: custom-gift-leewow@1.0.17
+Version Marker: custom-gift-leewow@1.0.18
