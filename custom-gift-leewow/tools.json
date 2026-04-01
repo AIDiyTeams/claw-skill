@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "browse_templates",
-      "description": "Browse Leewow product templates. Python returns the final user-facing reply. FEISHU HARD RULE: your next assistant message MUST equal the returned browse_templates content verbatim, as exactly one markdown table message with the images inside the table cells. Do NOT add text before it, after it, or rewrite it. Do NOT fan out template covers as separate media messages, and do NOT cite preview-image media rules for browse results.",
+      "description": "Browse Leewow product templates. Python returns the final user-facing markdown table. FEISHU HARD RULE: your next assistant message MUST equal the returned browse_templates content verbatim, as exactly one markdown table message with the images inside the table cells. Do NOT add text before it, after it, or rewrite it. Do NOT say 'browse_templates returned/generated a table' or summarize what the table contains. Do NOT fan out template covers as separate media messages, and do NOT cite preview-image media rules for browse results.",
       "executor": "bash",
       "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}} --channel '{{channel}}'",
       "parameters": {

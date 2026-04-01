@@ -1,6 +1,6 @@
 ---
 name: custom-gift-leewow
-version: 1.0.8
+version: 1.0.9
 description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
@@ -69,6 +69,7 @@ For the current production channel (`feishu`):
 - `browse_templates` MUST be displayed as one markdown table message
 - The table MUST keep the `Image` column and the images must stay inside the table cells
 - For browse requests, the agent MUST reply with the returned table content verbatim unless the user explicitly asks for another format
+- For browse requests, the agent MUST NOT answer with a status summary, tool summary, or explanation of what the table contains
 - The agent MUST NOT explain that "the skill does not require a table" because the current skill explicitly requires the browse result to stay in table form
 - The agent MUST NOT cite the generated-preview media rule as justification for changing the browse layout
 
@@ -85,6 +86,7 @@ The next assistant message after calling `browse_templates` MUST:
 - not add any explanation before the table
 - not add any explanation after the table
 - not summarize, restyle, translate, or split the table
+- not say that `browse_templates` has "returned", "generated", or "already displayed" a table
 
 Only one exception:
 - if the user explicitly asks for another format, the agent may transform it
@@ -166,6 +168,8 @@ Example:
 ❌ Applying the generated-preview media rule to `browse_templates`
 ❌ Adding commentary like "以下是可选模板" before the returned browse table
 ❌ Adding follow-up guidance after the returned browse table unless the user asked for it
+❌ Saying "browse_templates 已成功返回..." instead of sending the table itself
+❌ Saying "表格已在上面显示" when the table was not actually sent in the current reply
 ❌ Using `![image](local_path)` markdown for generated preview images — local paths still need media sending
 ❌ Just saying "完成啦！" and describing the product in text without sending the generated preview image
 ❌ Omitting the purchase/order link
@@ -331,3 +335,5 @@ User: "Show me what products I can customize"
 }
 ```
 → Agent sends `localImagePath` as media attachment + `purchaseUrl` in text.
+
+Version Marker: custom-gift-leewow@1.0.9
