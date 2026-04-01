@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "browse_templates",
-      "description": "Browse Leewow product templates. Python handles channel-specific rendering and returns a ready-to-send payload. FEISHU OVERRIDE: browse results MUST be sent as exactly one markdown table message with the images inside the table cells. Send the returned content directly; do NOT fan out template covers as separate media messages, and do NOT cite preview-image media rules for browse results.",
+      "description": "Browse Leewow product templates. Python handles channel-specific rendering and returns the final ready-to-send payload. FEISHU OVERRIDE: browse results MUST be sent as exactly one markdown table message with the images inside the table cells. Reply with the returned content verbatim for browse requests; do NOT fan out template covers as separate media messages, and do NOT cite preview-image media rules for browse results.",
       "executor": "bash",
       "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}} --channel '{{channel}}'",
       "parameters": {

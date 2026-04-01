@@ -1,6 +1,6 @@
 ---
 name: custom-gift-leewow
-version: 1.0.4
+version: 1.0.5
 description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
@@ -68,6 +68,7 @@ Do **not** unpack the browse result into multiple image messages unless the user
 For the current production channel (`feishu`):
 - `browse_templates` MUST be displayed as one markdown table message
 - The table MUST keep the `Image` column and the images must stay inside the table cells
+- For browse requests, the agent MUST reply with the returned table content verbatim unless the user explicitly asks for another format
 - The agent MUST NOT explain that "the skill does not require a table" because the current skill explicitly requires the browse result to stay in table form
 - The agent MUST NOT cite the generated-preview media rule as justification for changing the browse layout
 
@@ -114,6 +115,7 @@ Example:
 - MUST send exactly one browse message for the table unless the user explicitly asks for a different format
 - MUST preserve the `Template ID` column
 - MUST preserve the `Image` column with image markdown inside the table
+- SHOULD send the returned table verbatim instead of rewriting it
 - SHOULD keep the preview link column as fallback when Feishu thumbnail rendering is inconsistent
 - Do NOT convert the browse result into one-message-per-image unless the user asks
 - Do NOT rewrite the returned layout for the current channel unless the user explicitly asks to change the presentation

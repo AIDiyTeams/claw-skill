@@ -103,6 +103,7 @@ class FeishuRenderer(ChannelRenderer):
         lines.extend(
             [
                 "",
+                "Reply with the Template ID you want to continue.",
                 "Use `generate_preview` with a `Template ID` to create a customized design.",
                 "If a thumbnail does not render in Feishu, use the `Preview` link in the same row.",
             ]
