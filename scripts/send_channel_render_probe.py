@@ -4,9 +4,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 
-from channel_messaging import get_channel_messenger
+CUSTOM_GIFT_SCRIPTS = "/Users/apple/LeeWoW/leewow-skills/custom-gift-leewow/scripts"
+if CUSTOM_GIFT_SCRIPTS not in sys.path:
+    sys.path.insert(0, CUSTOM_GIFT_SCRIPTS)
+
+from feishu_direct import FeishuDirectClient
 
 
 def env(name: str, default: str | None = None) -> str | None:
@@ -47,25 +52,38 @@ def main(default_channel: str | None = None) -> int:
     args = parse_args(default_channel=default_channel)
     if not args.receive_id:
         raise SystemExit("Missing target receive_id. Pass --receive-id or set FEISHU_RECEIVE_ID.")
+    if (args.channel or "").strip().lower() != "feishu":
+        raise SystemExit("This probe currently supports feishu only.")
 
-    messenger = get_channel_messenger(args.channel)
-    result = messenger.send_markdown(
-        markdown=read_text(args.file),
+    app_id = env("FEISHU_APP_ID")
+    app_secret = env("FEISHU_APP_SECRET")
+    if not app_id or not app_secret:
+        raise SystemExit("Missing FEISHU_APP_ID / FEISHU_APP_SECRET")
+
+    client = FeishuDirectClient(
+        app_id=app_id,
+        app_secret=app_secret,
         receive_id=args.receive_id,
         receive_id_type=args.receive_id_type,
-        mode=args.mode,
+        domain=env("FEISHU_OPEN_BASE", "https://open.feishu.cn") or "https://open.feishu.cn",
+    )
+
+    message_id, image_resolved = client.send_markdown_card(
+        markdown_text=read_text(args.file),
+        image_ref=None,
+        alt_text="probe",
     )
 
     print(
         json.dumps(
             {
                 "ok": True,
-                "channel": result.channel,
+                "channel": "feishu",
                 "mode": args.mode,
-                "receiveIdType": result.receive_id_type,
-                "messageId": result.message_id,
+                "receiveIdType": args.receive_id_type,
+                "messageId": message_id,
                 "file": args.file,
-                "imagesResolved": result.images_resolved,
+                "imagesResolved": image_resolved,
             },
             ensure_ascii=False,
             indent=2,

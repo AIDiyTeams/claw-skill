@@ -1,11 +1,12 @@
 ---
 name: custom-gift-leewow
-version: 1.0.19
+version: 1.0.20
 description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
   Tools: browse_templates (Python direct Feishu card send), generate_preview,
-  get_generation_status (Python direct Feishu result send). Requires CLAW_SK.
+  get_generation_status (Python direct Feishu result send). Requires CLAW_SK
+  and Feishu app/target configuration.
   If ClawHub is rate-limited,
   install from GitHub:
   https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
@@ -50,9 +51,9 @@ Create personalized gifts and custom products powered by AI. This skill provides
 
 ## What the agent does (keep it minimal)
 
-**Browse** — `browse_templates` sends Feishu product cards directly from Python and returns only send results. If the tool succeeds, reply with **`NO_REPLY`**. Do not retell the product list in normal assistant text.
+**Browse** — `browse_templates` sends Feishu product cards directly from Python and returns only send results. If the tool succeeds, reply with **`NO_REPLY`**. The current conversation target should be passed in as `feishu_target`; do not ask the user to provide it manually if it is available from the current Feishu context.
 
-**Preview** — `get_generation_status` sends the generated preview result directly to Feishu from Python and returns only send results. If the tool succeeds, reply with **`NO_REPLY`**.
+**Preview** — `get_generation_status` sends the generated preview result directly to Feishu from Python and returns only send results. If the tool succeeds, reply with **`NO_REPLY`**. Preview result cards intentionally use a different layout from browse cards.
 
 ## Prerequisites
 
@@ -84,6 +85,11 @@ CLAW_BASE_URL=https://leewow.com
 CLAW_PATH_PREFIX=/v2
 LEEWOW_API_BASE=https://leewow.com
 ```
+
+Prefer runtime target passing:
+- When the agent already knows the current Feishu conversation target, it should pass that value as `feishu_target`
+- Do **not** ask the user for the current chat id if the conversation context already provides it
+- `FEISHU_RECEIVE_ID` is only a fallback for environments where the current conversation target cannot be inferred automatically
 
 ## Image Requirements (IMPORTANT)
 
@@ -234,11 +240,12 @@ User: "Show me what products I can customize"
   "taskId": "task_xxx",
   "status": "COMPLETED",
   "mode": "direct_feishu_send",
-  "messageCount": 2,
-  "messageIds": ["om_img_xxx", "om_text_xxx"],
+  "messageCount": 1,
+  "messageIds": ["om_card_xxx"],
+  "feishuImagesResolved": true,
   "finalAssistantReply": "NO_REPLY"
 }
 ```
-→ Python sends preview image + text directly. Agent returns `NO_REPLY`.
+→ Python sends one preview result card directly. Agent returns `NO_REPLY`.
 
-Version Marker: custom-gift-leewow@1.0.19
+Version Marker: custom-gift-leewow@1.0.20

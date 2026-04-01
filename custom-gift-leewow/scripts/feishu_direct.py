@@ -43,6 +43,38 @@ class FeishuDirectClient:
         data = self._send_message(payload)
         return ((data.get("data") or {}).get("message_id") or "").strip()
 
+    def build_card(self, markdown_text: str, image_ref: str | None = None, alt_text: str = "Preview") -> tuple[dict[str, Any], bool]:
+        image_key = self.upload_image(image_ref) if image_ref else None
+        body_elements: list[dict[str, Any]] = [
+            {
+                "tag": "markdown",
+                "content": markdown_text,
+            }
+        ]
+        if image_key:
+            body_elements.append(
+                {
+                    "tag": "img",
+                    "img_key": image_key,
+                    "alt": {
+                        "tag": "plain_text",
+                        "content": alt_text,
+                    },
+                }
+            )
+        return (
+            {
+                "schema": "2.0",
+                "config": {"wide_screen_mode": True},
+                "body": {"elements": body_elements},
+            },
+            bool(image_key),
+        )
+
+    def send_markdown_card(self, markdown_text: str, image_ref: str | None = None, alt_text: str = "Preview") -> tuple[str, bool]:
+        card, image_resolved = self.build_card(markdown_text, image_ref=image_ref, alt_text=alt_text)
+        return self.send_card(card), image_resolved
+
     def send_text(self, markdown_text: str) -> str:
         payload = {
             "msg_type": "interactive",
@@ -179,6 +211,6 @@ def resolve_feishu_delivery_config(params: dict[str, Any] | None = None) -> tupl
         )
     if not receive_id:
         raise RuntimeError(
-            "operator_action_required: missing FEISHU_RECEIVE_ID or feishu_target for direct Feishu delivery"
+            "operator_action_required: missing feishu_target/current conversation target for direct Feishu delivery"
         )
     return app_id, app_secret, receive_id, receive_id_type, domain

@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "browse_templates",
-      "description": "Fetch customizable product templates and send Feishu cards directly from Python. Returns only send results plus finalAssistantReply=NO_REPLY. This tool requires CLAW_SK and Feishu direct-send configuration (FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_RECEIVE_ID, optional FEISHU_RECEIVE_ID_TYPE). The agent should not restyle or resend browse content after a successful call.",
+      "description": "Fetch customizable product templates and send Feishu cards directly from Python. Returns only send results plus finalAssistantReply=NO_REPLY. This tool requires CLAW_SK and Feishu direct-send configuration (FEISHU_APP_ID, FEISHU_APP_SECRET, optional fallback FEISHU_RECEIVE_ID / FEISHU_RECEIVE_ID_TYPE). The agent should pass feishu_target from the current conversation when available, should not ask the user for it if already known from context, and should not restyle or resend browse content after a successful call.",
       "executor": "bash",
       "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}} --channel '{{channel}}' --json --feishu-target '{{feishu_target}}' --feishu-receive-id-type '{{feishu_receive_id_type}}' --feishu-app-id '{{feishu_app_id}}' --feishu-app-secret '{{feishu_app_secret}}' --feishu-open-base '{{feishu_open_base}}'",
       "parameters": {
@@ -85,7 +85,7 @@
     },
     {
       "name": "get_generation_status",
-      "description": "Check generation task status and, when possible, send the preview result to Feishu directly from Python. On success, returns only send results plus finalAssistantReply=NO_REPLY. This tool requires the same Feishu direct-send configuration as browse_templates.",
+      "description": "Check generation task status and, when possible, send the preview result to Feishu directly from Python. On success, returns only send results plus finalAssistantReply=NO_REPLY. This tool requires the same Feishu direct-send configuration as browse_templates, and the agent should pass feishu_target from the current conversation when available.",
       "executor": "bash",
       "command": "python3 scripts/get_status.py '{{task_id}}' {{#if poll}}--poll{{/if}} --timeout {{timeout}} --json --direct-feishu-send --feishu-target '{{feishu_target}}' --feishu-receive-id-type '{{feishu_receive_id_type}}' --feishu-app-id '{{feishu_app_id}}' --feishu-app-secret '{{feishu_app_secret}}' --feishu-open-base '{{feishu_open_base}}'",
       "parameters": {

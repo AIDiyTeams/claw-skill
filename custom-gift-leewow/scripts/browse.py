@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-"""Browse Leewow customizable product templates and optionally send Feishu cards directly."""
+"""Browse Leewow customizable product templates and send Feishu cards directly."""
 
 import argparse
 import hashlib
@@ -27,7 +27,7 @@ def _load_env_file():
 _load_env_file()
 
 import requests
-from channel_renderers import get_channel_renderer, normalize_browse_item, normalize_plain_text
+from channel_renderers import normalize_browse_item
 from claw_auth import claw_get
 from feishu_direct import FeishuDirectClient, resolve_feishu_delivery_config
 
@@ -127,7 +127,7 @@ def _build_browse_items(category: str = None, count: int = 5) -> list[dict]:
     return rows
 
 
-def _build_customer_message_markdown(item: dict, include_preview_link: bool = True) -> str:
+def _build_customer_message_markdown(item: dict, include_preview_link: bool = False) -> str:
     price_display = str(item["price"]).replace("|", "\\|")
     lines = [
         f"## {item['name']}",
@@ -138,38 +138,6 @@ def _build_customer_message_markdown(item: dict, include_preview_link: bool = Tr
     if include_preview_link and item.get("coverImage"):
         lines.extend(["", f"[Preview: {item['name']}]({item['coverImage']})"])
     return "\n".join(lines)
-
-
-def _build_feishu_product_card(item: dict, image_key: str | None, include_preview_link: bool = False) -> dict:
-    body_elements: list[dict] = [
-        {
-            "tag": "markdown",
-            "content": _build_customer_message_markdown(
-                item,
-                include_preview_link=include_preview_link and bool(item.get("coverImage")),
-            ),
-        }
-    ]
-    if image_key:
-        body_elements.append(
-            {
-                "tag": "img",
-                "img_key": image_key,
-                "alt": {
-                    "tag": "plain_text",
-                    "content": item["name"],
-                },
-            }
-        )
-    return {
-        "schema": "2.0",
-        "config": {
-            "wide_screen_mode": True,
-        },
-        "body": {
-            "elements": body_elements,
-        },
-    }
 
 
 def _prepare_feishu_cards_parallel(
@@ -184,16 +152,22 @@ def _prepare_feishu_cards_parallel(
     any_changed = False
 
     def task(idx: int, item: dict) -> tuple[int, dict]:
-        image_key = None
-        if item.get("coverImage"):
-            try:
-                image_key = client.upload_image(item["coverImage"])
-            except Exception:
-                image_key = None
-        card = _build_feishu_product_card(item, image_key, include_preview_link=image_key is None)
+        markdown = _build_customer_message_markdown(item)
+        try:
+            card, image_resolved = client.build_card(
+                markdown_text=markdown,
+                image_ref=item.get("coverImage") or None,
+                alt_text=item["name"],
+            )
+        except Exception:
+            card, image_resolved = client.build_card(
+                markdown_text=_build_customer_message_markdown(item, include_preview_link=True),
+                image_ref=None,
+                alt_text=item["name"],
+            )
         return idx, {
             "card": card,
-            "feishuImageResolved": bool(image_key),
+            "feishuImageResolved": image_resolved,
         }
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
@@ -205,16 +179,6 @@ def _prepare_feishu_cards_parallel(
                 any_changed = True
 
     return [r for r in results if r is not None], any_changed
-
-
-def browse_templates(category: str = None, count: int = 5, channel: str = "feishu") -> str:
-    """Return templates rendered for the requested channel."""
-    rows = _build_browse_items(category=category, count=count)
-    if rows and rows[0].get("error"):
-        return f"**Error**: {rows[0]['error']}"
-    renderer = get_channel_renderer(channel)
-    return renderer.render_browse(rows)
-
 
 def browse_templates_payload(category: str = None, count: int = 5, channel: str = "feishu", params: dict | None = None) -> dict:
     """Direct-send browse cards on Feishu and return send results."""
@@ -319,4 +283,21 @@ if __name__ == "__main__":
             )
         )
     else:
-        print(browse_templates(category=args.category, count=args.count, channel=args.channel))
+        print(
+            json.dumps(
+                browse_templates_payload(
+                    category=args.category,
+                    count=args.count,
+                    channel=args.channel,
+                    params={
+                        "feishu_target": args.feishu_target,
+                        "feishu_receive_id_type": args.feishu_receive_id_type,
+                        "feishu_app_id": args.feishu_app_id,
+                        "feishu_app_secret": args.feishu_app_secret,
+                        "feishu_open_base": args.feishu_open_base,
+                    },
+                ),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )

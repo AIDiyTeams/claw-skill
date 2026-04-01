@@ -172,11 +172,19 @@ def send_task_result_to_feishu(task_id: str, poll: bool = True, timeout: int = 1
     )
 
     message_ids: list[str] = []
+    image_resolved = False
     if result.get("status") == "COMPLETED":
-        if result.get("localImagePath"):
-            message_ids.append(client.send_image(result["localImagePath"]))
-        if result.get("replyMarkdown"):
-            message_ids.append(client.send_text(result["replyMarkdown"]))
+        preview_markdown = _build_completed_preview_card_markdown(
+            task_id=result.get("taskId", task_id),
+            template_id=result.get("templateId"),
+            purchase_url=result.get("purchaseUrl", ""),
+        )
+        message_id, image_resolved = client.send_markdown_card(
+            markdown_text=preview_markdown,
+            image_ref=result.get("localImagePath"),
+            alt_text=f"preview-{result.get('taskId', task_id)}",
+        )
+        message_ids.append(message_id)
     elif result.get("replyMarkdown"):
         message_ids.append(client.send_text(result["replyMarkdown"]))
 
@@ -188,6 +196,7 @@ def send_task_result_to_feishu(task_id: str, poll: bool = True, timeout: int = 1
         "mode": "direct_feishu_send",
         "messageIds": message_ids,
         "messageCount": len(message_ids),
+        "feishuImagesResolved": image_resolved,
         "finalAssistantReply": "NO_REPLY",
     }
 
@@ -245,6 +254,20 @@ def _build_completed_reply_markdown(task_id: str, template_id, purchase_url: str
         f"📦 模板ID: {template_id or '?'} | 任务ID: {task_id}",
         "",
         "喜欢吗？如果想调整或者试试其他产品，告诉我！",
+    ]
+    return "\n".join(lines)
+
+
+def _build_completed_preview_card_markdown(task_id: str, template_id, purchase_url: str) -> str:
+    lines = [
+        "## 你的定制效果图出来啦 🎉",
+        "效果图已经生成，可以直接查看并继续下单。",
+        f"**Template ID:** `{template_id or '?'}`",
+        f"**Task ID:** `{task_id}`",
+        "",
+        f"[🛒 点击下单购买]({purchase_url})",
+        "",
+        "如果想调整或试试其他产品，告诉我！",
     ]
     return "\n".join(lines)
 
