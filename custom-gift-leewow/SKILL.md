@@ -1,15 +1,12 @@
 ---
 name: custom-gift-leewow
-version: 1.0.12
+version: 1.0.13
 description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
-  Includes tools: browse_templates (discover products), generate_preview
-  (create a design from an image), and get_generation_status (check generation
-  progress). browse_templates returns per-product markdown messages with a
-  customer-facing subtitle and one large image per message. Generated previews
-  are still downloaded to workspace for display. Powered by Leewow. Requires
-  CLAW_SK. If ClawHub is rate-limited,
+  Tools: browse_templates (JSON with per-product markdown messages), generate_preview,
+  get_generation_status. Agent forwards script output verbatim. Requires CLAW_SK.
+  If ClawHub is rate-limited,
   install from GitHub:
   https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
 homepage: https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
@@ -19,10 +16,6 @@ homepage: https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
 
 > ClawHub rate-limited? Install directly from GitHub:
 > `https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow`
-
-> Feishu browse rule: product browsing MUST be shown as multiple product
-> messages. Each message should contain one product title, one customer-facing
-> subtitle, and one large image.
 
 ## Install Fallback
 
@@ -55,127 +48,11 @@ Create personalized gifts and custom products powered by AI. This skill provides
 - User provides an **image** and wants to turn it into a product
 - User says "make this into a mug/bag/shirt", "customize this design"
 
-## Browse Output Format
+## What the agent does (keep it minimal)
 
-`browse_templates` now returns delivery JSON with `messagesMarkdown`:
-- Each `messagesMarkdown` item is one final user-facing Markdown message
-- For Feishu, each message shows one product
-- Layout goal: bold product name, smaller description underneath, then one large image below
-- The agent should send each `messagesMarkdown` item directly, in order, as separate messages
+**Browse** — `browse_templates` returns JSON. Send each entry of `messagesMarkdown` in order as **separate** user-visible messages, **verbatim** (no merge into one bubble, no rewrite, no extra intro/outro or tool narration). Optional field `feishuImagesResolved` is for human debugging only; do not mention it to the user. If the user asks for a different format, you may adapt only then.
 
-## Priority Rule
-
-For the current production channel (`feishu`):
-- `browse_templates` MUST be displayed as multiple product messages, one product per message
-- Each browse message MUST keep the product image inside the same message, below the title/description
-- For browse requests, the agent MUST send each returned `messagesMarkdown` item verbatim unless the user explicitly asks for another format
-- For browse requests, the agent MUST NOT answer with a status summary, tool summary, or explanation of what the browse messages contain
-- The agent MUST NOT explain that "the skill does not require a table" because the current skill explicitly defines a per-product browse message layout
-- The agent MUST NOT cite the generated-preview media rule as justification for changing the browse layout
-
-Important distinction:
-- `browse_templates` = multiple markdown messages, one per product
-- `get_generation_status` = generated preview image sent as media attachment, then `replyMarkdown` sent as text
-
-## Verbatim Contract
-
-For `browse_templates`, the returned `messagesMarkdown` array already contains the final user-facing replies.
-
-The next assistant messages after calling `browse_templates` MUST:
-- send each `messagesMarkdown` item exactly as returned
-- preserve order
-- not add any explanation before or after any item
-- not summarize, restyle, translate, or merge the items
-- not say that `browse_templates` has "returned", "generated", or "already displayed" the layout
-
-Only one exception:
-- if the user explicitly asks for another format, the agent may transform it
-
-## Channel Design
-
-This skill now follows a channel-extension design:
-- Business scripts return normalized product / task data
-- Python channel renderers transform that data into ready-to-send content
-- The agent should treat browse output as final presentation content, not something to reformat
-
-Current implementation:
-- `feishu` renderer is implemented and tested
-
-Reserved for future:
-- Other communication channels should be added as new renderer / messenger implementations without changing the business scripts
-- The agent should not guess unsupported channels or invent channel-specific formatting
-
-## Generator Output Format (MUST FOLLOW)
-
-This skill uses a **two-step generator pattern**.
-
-### Step 1: Browse — Show Templates
-
-After calling `browse_templates`, the tool returns one JSON object with `messagesMarkdown`.
-
-Expected usage:
-1. Send each `messagesMarkdown` item **as-is**
-2. After the last item, ask the user to choose a `Template ID`
-
-Example:
-
-```json
-{
-  "format": "multi_message_markdown",
-  "messagesMarkdown": [
-    "## Canvas Tote Bag\nDurable everyday tote for gifts and custom prints.\n**Template ID:** `12`\n**Price:** **$19.9 USD**\n\n![Canvas Tote](https://...)"
-  ]
-}
-```
-
-**Rules for Step 1:**
-- MUST send each returned browse message in order
-- MUST preserve the large-image layout inside each message
-- MUST send the returned markdown verbatim instead of rewriting it
-- Do NOT merge all products back into one summary table
-- Do NOT rewrite the returned layout for the current channel unless the user explicitly asks to change the presentation
-
-### Step 2: Generation Complete — Show Preview + Purchase Link
-
-After `get_generation_status` returns COMPLETED, the JSON contains:
-- `localImagePath` — preview image in workspace
-- `purchaseUrl` — signed purchase/order page link
-- `replyMarkdown` — final text message content for the agent to send
-
-You MUST:
-1. **Send the preview image as a media attachment** using `localImagePath`
-2. **Send `replyMarkdown` exactly as returned** in the text message
-
-Example:
-
-```
-[send image: /Users/.../.openclaw/workspace/previews/leewow_preview_task_xxx.jpg]
-
-你的定制效果图出来啦 🎉
-🛒 点击下单购买: https://leewow.com/claw/preview/gen_xxx?skid=...&sig=...
-
-喜欢吗？如果想调整或者试试其他产品，告诉我！
-```
-
-**Rules for Step 2:**
-- MUST send the preview image as media — this is the whole point
-- MUST send the returned `replyMarkdown` without paraphrasing
-- Do NOT just describe the product in text — the user needs to SEE the image
-
-### Common Mistakes to AVOID
-
-❌ Collapsing the returned per-product messages into one summary table
-❌ Claiming that the skill doc does not require the defined browse layout
-❌ Applying the generated-preview media rule to `browse_templates`
-❌ Adding commentary like "以下是可选模板" before the returned browse messages
-❌ Adding follow-up guidance between returned browse messages unless the user asked for it
-❌ Saying "browse_templates 已成功返回..." instead of sending the messages themselves
-❌ Saying "表格已在上面显示" when the defined browse layout was not actually sent in the current reply
-❌ Using `![image](local_path)` markdown for generated preview images — local paths still need media sending
-❌ Just saying "完成啦！" and describing the product in text without sending the generated preview image
-❌ Omitting the purchase/order link
-❌ Dropping the `Template ID` column from the browse table
-❌ Saying "图片已下载到本地" without actually sending the generated preview image
+**Preview** — When `get_generation_status` is `COMPLETED`, send `localImagePath` as a **media attachment**, then send `replyMarkdown` verbatim. Do not replace that with a plain description or with markdown that points at the local file instead of real media.
 
 ## Prerequisites
 
@@ -183,6 +60,7 @@ Example:
 - `CLAW_BASE_URL` — API base URL (default: `https://leewow.com`)
 - `CLAW_PATH_PREFIX` — Path prefix (default: `/v2` for leewow.com)
 - `LEEWOW_API_BASE` — Base URL for COS STS credentials (default: `https://leewow.com`)
+- Optional (recommended for Feishu browse covers): `FEISHU_APP_ID`, `FEISHU_APP_SECRET` — same app as your Feishu bot; without them, browse still works but cover thumbnails in Feishu may not display well
 - Python 3.10+ with `requests` and `cos-python-sdk-v5`
 
 ## Configuration
@@ -194,6 +72,9 @@ CLAW_SK=sk-leewow-xxxx-xxxx
 CLAW_BASE_URL=https://leewow.com
 CLAW_PATH_PREFIX=/v2
 LEEWOW_API_BASE=https://leewow.com
+# Optional, for better Feishu browse rendering:
+# FEISHU_APP_ID=cli_xxx
+# FEISHU_APP_SECRET=xxx
 ```
 
 ## Image Requirements (IMPORTANT)
@@ -226,11 +107,11 @@ python3 scripts/get_status.py {taskId} --presign --json
 
 ## Typical Flow (Generator Pattern)
 
-1. **Browse (Step 1)** — Call `browse_templates` → get `messagesMarkdown` → send each message directly in order → ask user to pick
+1. **Browse** — `browse_templates` → send each `messagesMarkdown` item in order → user picks a `Template ID` when ready
 2. **Upload** — User provides an image (must be in workspace `~/.openclaw/workspace/`)
 3. **Generate** — Call `generate_preview` → get taskId → immediately proceed to step 4
 4. **Poll** — Call `get_generation_status` with `poll=true` → wait for COMPLETED
-5. **Display (Step 2)** — **Send preview image as media** (`localImagePath`) + then send `replyMarkdown` exactly as returned
+5. **Display** — Send preview **as media** (`localImagePath`) + `replyMarkdown` verbatim
 
 ## Tool Reference
 
@@ -314,12 +195,13 @@ User: "Show me what products I can customize"
 {
   "format": "multi_message_markdown",
   "messageCount": 1,
+  "feishuImagesResolved": false,
   "messagesMarkdown": [
-    "## Men's Hoodie\nClassic hoodie with soft fleece lining.\n**Template ID:** `3`\n**Price:** **$29.9 USD**\n\n![Men's Hoodie](https://...)"
+    "## Men's Hoodie\n…\n**Template ID:** `3`\n**Price:** **$29.9 USD**\n\n![Men's Hoodie](https://...)"
   ]
 }
 ```
-→ Agent sends each `messagesMarkdown` item directly as one message.
+→ Agent sends each `messagesMarkdown` item as its own message, verbatim (`feishuImagesResolved` is diagnostic only).
 
 ### generate_preview --json
 ```json
@@ -343,4 +225,4 @@ User: "Show me what products I can customize"
 ```
 → Agent sends `localImagePath` as media attachment + `replyMarkdown` as text.
 
-Version Marker: custom-gift-leewow@1.0.12
+Version Marker: custom-gift-leewow@1.0.13

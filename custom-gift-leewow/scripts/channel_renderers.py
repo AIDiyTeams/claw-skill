@@ -32,10 +32,10 @@ def build_customer_subtitle(name: str, sku_type: str, shipping: str) -> str:
         (("hoodie", "sweatshirt"), "可定制连帽卫衣，适合大面积图案展示"),
         (("tote", "bag"), "可定制通勤包袋，适合日常使用"),
         (("crossbody",), "可定制斜挎包，适合轻便出行"),
-        (("iphone", "phone case", "case"), "可定制手机壳，适合个性化图案"),
         (("socks",), "可定制袜子，适合趣味图案设计"),
-        (("pillowcase", "pillow"), "可定制家居用品，适合照片或插画"),
+        (("pillowcase", "pillow case"), "可定制家居用品，适合照片或插画"),
         (("travel pillow",), "可定制旅行枕，适合舒适出行场景"),
+        (("iphone", "phone case"), "可定制手机壳，适合个性化图案"),
         (("framed print", "print", "poster"), "可定制装饰画，适合展示你的作品"),
     ]
 

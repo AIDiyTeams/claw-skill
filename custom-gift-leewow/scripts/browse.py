@@ -2,9 +2,10 @@
 from __future__ import annotations
 """Browse Leewow customizable product templates.
 
-Default output is a Feishu-friendly Markdown table so OpenClaw can render the
-result inside an interactive card with an image column. `--json` is kept for
-debugging / compatibility.
+Plain stdout: channel-specific markdown (default `feishu`: one markdown block per
+product). `--json` returns agent delivery JSON with `messagesMarkdown` (Feishu
+channel may embed resolvable cover images; with FEISHU_APP_ID/SECRET those are
+replaced during this run for Feishu IM when app credentials are set).
 """
 
 import argparse
@@ -33,6 +34,11 @@ _load_env_file()
 import requests
 from channel_renderers import get_channel_renderer, normalize_browse_item, normalize_plain_text
 from claw_auth import claw_get
+from feishu_markdown_resolve import (
+    FeishuMarkdownImageResolver,
+    fallback_markdown_images_to_links,
+    feishu_resolve_credentials_ready,
+)
 
 CLAW_BASE_URL = os.getenv("CLAW_BASE_URL", "https://leewow.com")
 CLAW_PATH_PREFIX = os.getenv("CLAW_PATH_PREFIX", "")
@@ -142,8 +148,7 @@ def browse_templates(category: str = None, count: int = 5, channel: str = "feish
 def browse_templates_payload(category: str = None, count: int = 5, channel: str = "feishu") -> dict:
     """Return JSON payload for agent delivery.
 
-    For Feishu, the agent should send each messagesMarkdown entry as a separate
-    message in order, verbatim.
+    Agent sends each `messagesMarkdown` entry in order, verbatim (separate messages).
     """
     rows = _build_browse_items(category=category, count=count)
     if rows and rows[0].get("error"):
@@ -151,11 +156,29 @@ def browse_templates_payload(category: str = None, count: int = 5, channel: str 
 
     renderer = get_channel_renderer(channel)
     messages = renderer.render_browse_messages(rows)
+    feishu_images_resolved = False
+    ch = (channel or "").strip().lower()
+    if ch == "feishu":
+        if feishu_resolve_credentials_ready():
+            resolver = FeishuMarkdownImageResolver()
+            resolved: list[str] = []
+            for msg in messages:
+                out, changed = resolver.resolve(msg)
+                if not changed:
+                    out = fallback_markdown_images_to_links(out)
+                resolved.append(out)
+                if changed:
+                    feishu_images_resolved = True
+            messages = resolved
+        else:
+            messages = [fallback_markdown_images_to_links(msg) for msg in messages]
+
     return {
         "channel": channel,
         "format": "multi_message_markdown",
         "messageCount": len(messages),
         "messagesMarkdown": messages,
+        "feishuImagesResolved": feishu_images_resolved,
     }
 
 
@@ -168,7 +191,7 @@ def browse_templates_json(category: str = None, count: int = 5) -> list:
     results = []
     for i, template in enumerate(templates, 1):
         tid = template.get("templateId", "?")
-        cover = _normalize_plain_text(template.get("coverImage"))
+        cover = normalize_plain_text(template.get("coverImage"))
         local_cover = _download_cover_image(cover, tid)
         results.append(
             {
