@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-"""Browse Leewow customizable product templates.
-
-Plain stdout: channel-specific markdown (default `feishu`: one block per product).
-`--json --stream`: NDJSON — one `browse_product` line per item as soon as that
-item's Feishu image handling finishes (flush per line); then `browse_complete`.
-`--json` without `--stream`: one JSON object (Feishu uploads run in parallel
-across products to shorten total wait).
-"""
+"""Browse Leewow customizable product templates and optionally send Feishu cards directly."""
 
 import argparse
 import hashlib
@@ -36,11 +29,7 @@ _load_env_file()
 import requests
 from channel_renderers import get_channel_renderer, normalize_browse_item, normalize_plain_text
 from claw_auth import claw_get
-from feishu_markdown_resolve import (
-    FeishuMarkdownImageResolver,
-    fallback_markdown_images_to_links,
-    feishu_resolve_credentials_ready,
-)
+from feishu_direct import FeishuDirectClient, resolve_feishu_delivery_config
 
 CLAW_BASE_URL = os.getenv("CLAW_BASE_URL", "https://leewow.com")
 CLAW_PATH_PREFIX = os.getenv("CLAW_PATH_PREFIX", "")
@@ -138,15 +127,6 @@ def _build_browse_items(category: str = None, count: int = 5) -> list[dict]:
     return rows
 
 
-def _process_one_feishu_markdown(
-    resolver: FeishuMarkdownImageResolver, msg: str
-) -> tuple[str, bool]:
-    out, changed = resolver.resolve(msg)
-    if not changed:
-        out = fallback_markdown_images_to_links(out)
-    return out, changed
-
-
 def _build_customer_message_markdown(item: dict, include_preview_link: bool = True) -> str:
     price_display = str(item["price"]).replace("|", "\\|")
     lines = [
@@ -160,13 +140,13 @@ def _build_customer_message_markdown(item: dict, include_preview_link: bool = Tr
     return "\n".join(lines)
 
 
-def _build_feishu_product_card(item: dict, image_key: str | None) -> dict:
+def _build_feishu_product_card(item: dict, image_key: str | None, include_preview_link: bool = False) -> dict:
     body_elements: list[dict] = [
         {
             "tag": "markdown",
             "content": _build_customer_message_markdown(
                 item,
-                include_preview_link=image_key is None and bool(item.get("coverImage")),
+                include_preview_link=include_preview_link and bool(item.get("coverImage")),
             ),
         }
     ]
@@ -192,64 +172,11 @@ def _build_feishu_product_card(item: dict, image_key: str | None) -> dict:
     }
 
 
-def _build_browse_message_plan(item: dict, channel: str, resolver: FeishuMarkdownImageResolver | None) -> dict:
-    markdown = _build_customer_message_markdown(item, include_preview_link=bool(item.get("coverImage")))
-    if (channel or "").strip().lower() != "feishu":
-        return {
-            "messageMarkdown": markdown,
-            "messageToolCall": {
-                "action": "send",
-                "channel": channel,
-                "message": markdown,
-            },
-            "feishuImageResolved": False,
-        }
-
-    image_key = resolver.resolve_image_ref(item["coverImage"]) if resolver and item.get("coverImage") else None
-    card = _build_feishu_product_card(item, image_key)
-    return {
-        "messageMarkdown": markdown,
-        "messageToolCall": {
-            "action": "send",
-            "channel": channel,
-            "card": card,
-        },
-        "feishuImageResolved": bool(image_key),
-    }
-
-
-def _resolve_feishu_messages_parallel(
-    messages: list[str],
-    resolver: FeishuMarkdownImageResolver,
-) -> tuple[list[str], bool]:
-    """Resolve each markdown block in parallel (separate products → separate uploads)."""
-    if not messages:
-        return [], False
-    n = len(messages)
-    workers = min(8, n)
-    results: list[str | None] = [None] * n
-    any_changed = False
-
-    def task(idx: int, msg: str) -> tuple[int, str, bool]:
-        out, ch = _process_one_feishu_markdown(resolver, msg)
-        return idx, out, ch
-
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        futures = [ex.submit(task, i, m) for i, m in enumerate(messages)]
-        for fut in futures:
-            idx, out, ch = fut.result()
-            results[idx] = out
-            if ch:
-                any_changed = True
-    return [r for r in results if r is not None], any_changed
-
-
-def _resolve_browse_plans_parallel(
+def _prepare_feishu_cards_parallel(
     rows: list[dict],
-    channel: str,
-    resolver: FeishuMarkdownImageResolver | None,
+    client: FeishuDirectClient,
 ) -> tuple[list[dict], bool]:
-    """Build per-product delivery plans in parallel while preserving order."""
+    """Build per-product Feishu card payloads in parallel while preserving order."""
     if not rows:
         return [], False
     workers = min(8, len(rows))
@@ -257,7 +184,17 @@ def _resolve_browse_plans_parallel(
     any_changed = False
 
     def task(idx: int, item: dict) -> tuple[int, dict]:
-        return idx, _build_browse_message_plan(item, channel, resolver)
+        image_key = None
+        if item.get("coverImage"):
+            try:
+                image_key = client.upload_image(item["coverImage"])
+            except Exception:
+                image_key = None
+        card = _build_feishu_product_card(item, image_key, include_preview_link=image_key is None)
+        return idx, {
+            "card": card,
+            "feishuImageResolved": bool(image_key),
+        }
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futures = [ex.submit(task, i, item) for i, item in enumerate(rows)]
@@ -270,61 +207,6 @@ def _resolve_browse_plans_parallel(
     return [r for r in results if r is not None], any_changed
 
 
-def _message_tool_calls(messages: list[str], channel: str) -> list[dict]:
-    return [
-        {"action": "send", "channel": channel, "message": message}
-        for message in messages
-    ]
-
-
-def emit_browse_ndjson_stream(
-    category: str | None = None,
-    count: int = 5,
-    channel: str = "feishu",
-) -> None:
-    """Print one JSON object per product as soon as that product is ready (line-buffered)."""
-    rows = _build_browse_items(category=category, count=count)
-    if rows and rows[0].get("error"):
-        line = json.dumps({"type": "browse_error", "error": rows[0]["error"]}, ensure_ascii=False)
-        print(line, flush=True)
-        return
-
-    renderer = get_channel_renderer(channel)
-    ch = (channel or "").strip().lower()
-    resolver: FeishuMarkdownImageResolver | None = None
-    if ch == "feishu" and feishu_resolve_credentials_ready():
-        resolver = FeishuMarkdownImageResolver()
-
-    plans, feishu_any = _resolve_browse_plans_parallel(rows, channel, resolver)
-    total = len(plans)
-    for i, plan in enumerate(plans):
-        chunk = {
-            "type": "browse_product",
-            "chunkIndex": i + 1,
-            "chunkTotal": total,
-            "channel": channel,
-            "displaySkill": "feishu-card-display",
-            "messageToolCalls": [plan["messageToolCall"]],
-            "messagesMarkdown": [plan["messageMarkdown"]],
-            "feishuImagesResolved": plan["feishuImageResolved"],
-        }
-        print(json.dumps(chunk, ensure_ascii=False), flush=True)
-
-    print(
-        json.dumps(
-            {
-                "type": "browse_complete",
-                "messageCount": total,
-                "feishuImagesResolved": feishu_any,
-                "finalAssistantReply": "NO_REPLY",
-                "format": "browse_ndjson",
-            },
-            ensure_ascii=False,
-        ),
-        flush=True,
-    )
-
-
 def browse_templates(category: str = None, count: int = 5, channel: str = "feishu") -> str:
     """Return templates rendered for the requested channel."""
     rows = _build_browse_items(category=category, count=count)
@@ -334,32 +216,40 @@ def browse_templates(category: str = None, count: int = 5, channel: str = "feish
     return renderer.render_browse(rows)
 
 
-def browse_templates_payload(category: str = None, count: int = 5, channel: str = "feishu") -> dict:
-    """Return JSON payload for agent delivery.
-
-    Agent sends each `messagesMarkdown` entry in order, verbatim (separate messages).
-    """
+def browse_templates_payload(category: str = None, count: int = 5, channel: str = "feishu", params: dict | None = None) -> dict:
+    """Direct-send browse cards on Feishu and return send results."""
     rows = _build_browse_items(category=category, count=count)
     if rows and rows[0].get("error"):
         return {"error": rows[0]["error"]}
 
     ch = (channel or "").strip().lower()
-    resolver: FeishuMarkdownImageResolver | None = None
-    if ch == "feishu" and feishu_resolve_credentials_ready():
-        resolver = FeishuMarkdownImageResolver()
+    if ch != "feishu":
+        return {"error": f"Unsupported direct-send channel: {channel}"}
 
-    plans, feishu_images_resolved = _resolve_browse_plans_parallel(rows, channel, resolver)
-    messages = [plan["messageMarkdown"] for plan in plans]
-    message_tool_calls = [plan["messageToolCall"] for plan in plans]
+    try:
+        app_id, app_secret, receive_id, receive_id_type, domain = resolve_feishu_delivery_config(params)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+    client = FeishuDirectClient(
+        app_id=app_id,
+        app_secret=app_secret,
+        receive_id=receive_id,
+        receive_id_type=receive_id_type,
+        domain=domain,
+    )
+
+    plans, feishu_images_resolved = _prepare_feishu_cards_parallel(rows, client)
+    message_ids: list[str] = []
+    for plan in plans:
+        message_ids.append(client.send_card(plan["card"]))
 
     return {
+        "ok": True,
         "channel": channel,
-        "format": "multi_message_card" if ch == "feishu" else "multi_message_markdown",
-        "deliveryMode": "message_tool_sequential",
-        "displaySkill": "feishu-card-display",
-        "messageCount": len(messages),
-        "messagesMarkdown": messages,
-        "messageToolCalls": message_tool_calls,
+        "mode": "direct_feishu_send",
+        "messageCount": len(message_ids),
+        "messageIds": message_ids,
         "feishuImagesResolved": feishu_images_resolved,
         "finalAssistantReply": "NO_REPLY",
     }
@@ -398,20 +288,35 @@ if __name__ == "__main__":
     parser.add_argument("--category", type=str, default=None)
     parser.add_argument("--count", type=int, default=5)
     parser.add_argument("--channel", type=str, default="feishu", help="Reserved output channel renderer")
-    parser.add_argument("--json", action="store_true", help="Output agent delivery JSON instead of markdown")
-    parser.add_argument(
-        "--stream",
-        action="store_true",
-        help="With --json: NDJSON stream (one browse_product line per item as ready, then browse_complete)",
-    )
+    parser.add_argument("--json", action="store_true", help="Direct-send and output JSON result")
     parser.add_argument("--raw-json", action="store_true", help="Output raw template JSON for debugging")
+    parser.add_argument("--feishu-target", type=str, default=None)
+    parser.add_argument("--feishu-receive-id-type", type=str, default=None)
+    parser.add_argument("--feishu-app-id", type=str, default=None)
+    parser.add_argument("--feishu-app-secret", type=str, default=None)
+    parser.add_argument("--feishu-open-base", type=str, default=None)
     args = parser.parse_args()
 
     if args.raw_json:
         print(json.dumps(browse_templates_json(category=args.category, count=args.count), ensure_ascii=False, indent=2))
-    elif args.json and args.stream:
-        emit_browse_ndjson_stream(category=args.category, count=args.count, channel=args.channel)
     elif args.json:
-        print(json.dumps(browse_templates_payload(category=args.category, count=args.count, channel=args.channel), ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                browse_templates_payload(
+                    category=args.category,
+                    count=args.count,
+                    channel=args.channel,
+                    params={
+                        "feishu_target": args.feishu_target,
+                        "feishu_receive_id_type": args.feishu_receive_id_type,
+                        "feishu_app_id": args.feishu_app_id,
+                        "feishu_app_secret": args.feishu_app_secret,
+                        "feishu_open_base": args.feishu_open_base,
+                    },
+                ),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     else:
         print(browse_templates(category=args.category, count=args.count, channel=args.channel))

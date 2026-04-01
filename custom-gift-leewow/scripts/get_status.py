@@ -45,6 +45,7 @@ def _load_env_file():
 _load_env_file()
 
 from claw_auth import claw_get, sign_url
+from feishu_direct import FeishuDirectClient, resolve_feishu_delivery_config
 import requests
 
 CLAW_BASE_URL = os.getenv("CLAW_BASE_URL", "https://leewow.com")
@@ -151,6 +152,46 @@ def get_task_status(task_id: str, download_image: bool = True) -> dict:
     return out
 
 
+def send_task_result_to_feishu(task_id: str, poll: bool = True, timeout: int = 120, download_image: bool = True, params: dict | None = None) -> dict:
+    """Poll/get task status, then deliver preview result directly to Feishu."""
+    result = poll_until_complete(task_id, timeout, download_image=download_image) if poll else get_task_status(task_id, download_image=download_image)
+    if "error" in result:
+        return result
+
+    try:
+        app_id, app_secret, receive_id, receive_id_type, domain = resolve_feishu_delivery_config(params)
+    except Exception as exc:
+        return {"error": str(exc), **result}
+
+    client = FeishuDirectClient(
+        app_id=app_id,
+        app_secret=app_secret,
+        receive_id=receive_id,
+        receive_id_type=receive_id_type,
+        domain=domain,
+    )
+
+    message_ids: list[str] = []
+    if result.get("status") == "COMPLETED":
+        if result.get("localImagePath"):
+            message_ids.append(client.send_image(result["localImagePath"]))
+        if result.get("replyMarkdown"):
+            message_ids.append(client.send_text(result["replyMarkdown"]))
+    elif result.get("replyMarkdown"):
+        message_ids.append(client.send_text(result["replyMarkdown"]))
+
+    return {
+        "ok": True,
+        "taskId": result.get("taskId", task_id),
+        "status": result.get("status"),
+        "templateId": result.get("templateId"),
+        "mode": "direct_feishu_send",
+        "messageIds": message_ids,
+        "messageCount": len(message_ids),
+        "finalAssistantReply": "NO_REPLY",
+    }
+
+
 def _download_preview(image_url: str, task_id: str) -> str | None:
     """Download preview image to workspace/previews/."""
     try:
@@ -233,9 +274,29 @@ if __name__ == "__main__":
     parser.add_argument("--timeout", type=int, default=120, help="Poll timeout in seconds")
     parser.add_argument("--no-download", action="store_true", help="Skip downloading preview image")
     parser.add_argument("--json", action="store_true", help="(compat) output JSON")
+    parser.add_argument("--direct-feishu-send", action="store_true", help="Send result directly to Feishu and output send result JSON")
+    parser.add_argument("--feishu-target", type=str, default=None)
+    parser.add_argument("--feishu-receive-id-type", type=str, default=None)
+    parser.add_argument("--feishu-app-id", type=str, default=None)
+    parser.add_argument("--feishu-app-secret", type=str, default=None)
+    parser.add_argument("--feishu-open-base", type=str, default=None)
     args = parser.parse_args()
 
-    if args.poll:
+    if args.direct_feishu_send:
+        result = send_task_result_to_feishu(
+            task_id=args.task_id,
+            poll=args.poll,
+            timeout=args.timeout,
+            download_image=not args.no_download,
+            params={
+                "feishu_target": args.feishu_target,
+                "feishu_receive_id_type": args.feishu_receive_id_type,
+                "feishu_app_id": args.feishu_app_id,
+                "feishu_app_secret": args.feishu_app_secret,
+                "feishu_open_base": args.feishu_open_base,
+            },
+        )
+    elif args.poll:
         result = poll_until_complete(args.task_id, args.timeout, download_image=not args.no_download)
     else:
         result = get_task_status(args.task_id, download_image=not args.no_download)
