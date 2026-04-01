@@ -7,12 +7,16 @@ description: >-
   (create a design from an image), and get_generation_status (check generation
   progress). browse_templates returns a Feishu-friendly markdown table with an
   image column. Generated previews are still downloaded to workspace for
-  display.
-  Powered by Leewow. Requires CLAW_SK.
+  display. Powered by Leewow. Requires CLAW_SK. If ClawHub is rate-limited,
+  install from GitHub:
+  https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
 homepage: https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
 ---
 
 # Custom Gift — Leewow
+
+> ClawHub rate-limited? Install directly from GitHub:
+> `https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow`
 
 ## Install Fallback
 
