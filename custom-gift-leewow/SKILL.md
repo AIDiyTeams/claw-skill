@@ -9,9 +9,26 @@ description: >-
   image column. Generated previews are still downloaded to workspace for
   display.
   Powered by Leewow. Requires CLAW_SK.
+homepage: https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
 ---
 
 # Custom Gift — Leewow
+
+## Install Fallback
+
+If ClawHub is rate-limited, install this skill directly from GitHub:
+
+- Repository: `https://github.com/AIDiyTeams/claw-skill`
+- Skill path: `custom-gift-leewow`
+
+Manual fallback:
+
+```bash
+cd /path/to/your/openclaw-workspace
+mkdir -p skills
+git clone https://github.com/AIDiyTeams/claw-skill.git /tmp/claw-skill
+cp -R /tmp/claw-skill/custom-gift-leewow ./skills/custom-gift-leewow
+```
 
 Create personalized gifts and custom products powered by AI. This skill provides:
 
