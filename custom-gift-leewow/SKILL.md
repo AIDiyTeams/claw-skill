@@ -1,6 +1,6 @@
 ---
 name: custom-gift-leewow
-version: 1.0.5
+version: 1.0.6
 description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
@@ -76,6 +76,19 @@ Important distinction:
 - `browse_templates` = one table message with images in the table
 - `get_generation_status` = generated preview image sent as media attachment
 
+## Verbatim Contract
+
+For `browse_templates`, the returned string is already the final user-facing reply.
+
+The next assistant message after calling `browse_templates` MUST:
+- be exactly the returned table content
+- not add any explanation before the table
+- not add any explanation after the table
+- not summarize, restyle, translate, or split the table
+
+Only one exception:
+- if the user explicitly asks for another format, the agent may transform it
+
 ## Channel Design
 
 This skill now follows a channel-extension design:
@@ -115,7 +128,7 @@ Example:
 - MUST send exactly one browse message for the table unless the user explicitly asks for a different format
 - MUST preserve the `Template ID` column
 - MUST preserve the `Image` column with image markdown inside the table
-- SHOULD send the returned table verbatim instead of rewriting it
+- MUST send the returned table verbatim instead of rewriting it
 - SHOULD keep the preview link column as fallback when Feishu thumbnail rendering is inconsistent
 - Do NOT convert the browse result into one-message-per-image unless the user asks
 - Do NOT rewrite the returned layout for the current channel unless the user explicitly asks to change the presentation
@@ -151,6 +164,8 @@ Example:
 ❌ Breaking `browse_templates` into many standalone image messages when the intended result is a table
 ❌ Claiming that the skill doc does not require a table for browse results
 ❌ Applying the generated-preview media rule to `browse_templates`
+❌ Adding commentary like "以下是可选模板" before the returned browse table
+❌ Adding follow-up guidance after the returned browse table unless the user asked for it
 ❌ Using `![image](local_path)` markdown for generated preview images — local paths still need media sending
 ❌ Just saying "完成啦！" and describing the product in text without sending the generated preview image
 ❌ Omitting the purchase/order link
