@@ -2,9 +2,9 @@
   "tools": [
     {
       "name": "browse_templates",
-      "description": "Browse Leewow product templates. Returns a Feishu-friendly Markdown table with an image column, price, template ID, and preview link. Send the table directly in chat; do NOT fan out template covers as separate media messages.",
+      "description": "Browse Leewow product templates. Python handles channel-specific rendering and returns a ready-to-send payload. For Feishu this is a markdown table intended for interactive-card delivery. Send the returned content directly; do NOT fan out template covers as separate media messages.",
       "executor": "bash",
-      "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}}",
+      "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}} --channel '{{channel}}'",
       "parameters": {
         "type": "object",
         "properties": {
@@ -19,6 +19,11 @@
             "default": 5,
             "minimum": 1,
             "maximum": 10
+          },
+          "channel": {
+            "type": "string",
+            "description": "Rendering channel. Use 'feishu' for current production flow. Other channels are reserved for future renderers and should not be guessed by the agent.",
+            "default": "feishu"
           }
         }
       }

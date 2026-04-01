@@ -31,6 +31,7 @@ def _load_env_file():
 _load_env_file()
 
 import requests
+from channel_renderers import get_channel_renderer, normalize_browse_item, normalize_plain_text
 from claw_auth import claw_get
 
 CLAW_BASE_URL = os.getenv("CLAW_BASE_URL", "https://leewow.com")
@@ -118,81 +119,24 @@ def _extract_price(sku_configs) -> str:
     return ""
 
 
-def _normalize_plain_text(value) -> str:
-    return str(value or "").replace("\r", " ").replace("\n", " ").strip()
-
-
-def _escape_table_cell(value) -> str:
-    text = _normalize_plain_text(value)
-    if not text:
-        return "-"
-    return text.replace("|", "\\|")
-
-
-def _compact_description(value: str, limit: int = 56) -> str:
-    text = _normalize_plain_text(value)
-    if len(text) <= limit:
-        return text
-    return text[: limit - 3].rstrip() + "..."
-
-
-def _format_image_cell(name: str, cover_url: str) -> str:
-    if not cover_url:
-        return "-"
-    alt = _escape_table_cell(name or "Preview")
-    return f"![{alt}]({cover_url})"
-
-
-def _format_preview_link(cover_url: str) -> str:
-    if not cover_url:
-        return "-"
-    return f"[Open image]({cover_url})"
-
-
-def browse_templates(category: str = None, count: int = 5) -> str:
-    """Return templates as a Feishu-friendly Markdown table."""
+def _build_browse_items(category: str = None, count: int = 5) -> list[dict]:
     templates = _fetch_templates(category=category, count=count)
     if templates and templates[0].get("error"):
-        return f"**Error**: {templates[0]['error']}"
+        return templates
 
-    if not templates:
-        return "No matching templates found. Try a different category or browse all."
-
-    lines = [
-        f"## Available Product Templates ({len(templates)} results)",
-        "",
-        "| Image | Product | Price | Template ID | Info | Preview |",
-        "| --- | --- | --- | --- | --- | --- |",
-    ]
-
+    rows = []
     for template in templates:
-        tid = template.get("templateId", "?")
-        name = _escape_table_cell(template.get("name", "Unnamed Product"))
-        cover = _normalize_plain_text(template.get("coverImage"))
-        price_display = _extract_price(template.get("skuConfigs")) or "-"
-        price_display = price_display.replace("|", "\\|")
-        sku_type = _normalize_plain_text(template.get("skuType")) or "-"
-        shipping = _normalize_plain_text(template.get("shippingOrigin")) or "CN"
-        description = _compact_description(template.get("description", ""))
-        info_parts = [f"SKU: {sku_type}", f"Ships: {shipping}"]
-        if description:
-            info_parts.append(description)
-        info = _escape_table_cell(" · ".join(info_parts))
-        image_cell = _format_image_cell(name, cover)
-        preview_link = _format_preview_link(cover)
+        rows.append(normalize_browse_item(template, _extract_price(template.get("skuConfigs"))))
+    return rows
 
-        lines.append(
-            f"| {image_cell} | **{name}** | {price_display} | `{tid}` | {info} | {preview_link} |"
-        )
 
-    lines.extend(
-        [
-            "",
-            "Use `generate_preview` with a `Template ID` to create a customized design.",
-            "If a thumbnail does not render in Feishu, use the `Preview` link in the same row.",
-        ]
-    )
-    return "\n".join(lines)
+def browse_templates(category: str = None, count: int = 5, channel: str = "feishu") -> str:
+    """Return templates rendered for the requested channel."""
+    rows = _build_browse_items(category=category, count=count)
+    if rows and rows[0].get("error"):
+        return f"**Error**: {rows[0]['error']}"
+    renderer = get_channel_renderer(channel)
+    return renderer.render_browse(rows)
 
 
 def browse_templates_json(category: str = None, count: int = 5) -> list:
@@ -227,10 +171,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--category", type=str, default=None)
     parser.add_argument("--count", type=int, default=5)
+    parser.add_argument("--channel", type=str, default="feishu", help="Reserved output channel renderer")
     parser.add_argument("--json", action="store_true", help="Output JSON instead of Markdown table")
     args = parser.parse_args()
 
     if args.json:
         print(json.dumps(browse_templates_json(category=args.category, count=args.count), ensure_ascii=False, indent=2))
     else:
-        print(browse_templates(category=args.category, count=args.count))
+        print(browse_templates(category=args.category, count=args.count, channel=args.channel))

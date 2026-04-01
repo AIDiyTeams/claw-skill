@@ -37,6 +37,20 @@ Create personalized gifts and custom products powered by AI. This skill provides
 
 Do **not** unpack the browse result into multiple image messages unless the user explicitly asks for separate images.
 
+## Channel Design
+
+This skill now follows a channel-extension design:
+- Business scripts return normalized product / task data
+- Python channel renderers transform that data into ready-to-send content
+- The agent should treat browse output as final presentation content, not something to reformat
+
+Current implementation:
+- `feishu` renderer is implemented and tested
+
+Reserved for future:
+- Other communication channels should be added as new renderer / messenger implementations without changing the business scripts
+- The agent should not guess unsupported channels or invent channel-specific formatting
+
 ## Generator Output Format (MUST FOLLOW)
 
 This skill uses a **two-step generator pattern**.
@@ -62,6 +76,7 @@ Example:
 - MUST preserve the `Template ID` column
 - SHOULD keep the preview link column as fallback when Feishu thumbnail rendering is inconsistent
 - Do NOT convert the browse result into one-message-per-image unless the user asks
+- Do NOT rewrite the returned layout for the current channel unless the user explicitly asks to change the presentation
 
 ### Step 2: Generation Complete — Show Preview + Purchase Link
 
