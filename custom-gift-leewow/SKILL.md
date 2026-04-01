@@ -1,6 +1,6 @@
 ---
 name: custom-gift-leewow
-version: 1.0.14
+version: 1.0.15
 description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
@@ -50,9 +50,9 @@ Create personalized gifts and custom products powered by AI. This skill provides
 
 ## What the agent does (keep it minimal)
 
-**Browse** — `browse_templates` returns JSON. Use OpenClaw `message` tool to send each entry of `messagesMarkdown` in order as **separate** user-visible messages, **verbatim** (no merge into one bubble, no rewrite, no extra intro/outro or tool narration). After all messages are sent, reply with **`NO_REPLY`**. Optional field `feishuImagesResolved` is for human debugging only; do not mention it to the user. If the user asks for a different format, you may adapt only then.
+**Browse** — `browse_templates` returns JSON. Execute `messageToolCalls` exactly, in order, with OpenClaw `message` tool. After all sends complete, reply with **`NO_REPLY`**. `messagesMarkdown` is for inspection/debugging only; do not use it when `messageToolCalls` is present.
 
-**Preview** — When `get_generation_status` is `COMPLETED`, use OpenClaw `message` tool to send `localImagePath` as a **media attachment**, then send `replyMarkdown` verbatim, then reply with **`NO_REPLY`**. Do not replace that with a plain description or with markdown that points at the local file instead of real media.
+**Preview** — `get_generation_status` also returns `messageToolCalls`. Execute them exactly, in order, with OpenClaw `message` tool, then reply with **`NO_REPLY`**. Do not replace that with a plain description or with markdown that points at the local file instead of real media.
 
 ## Prerequisites
 
@@ -107,11 +107,11 @@ python3 scripts/get_status.py {taskId} --presign --json
 
 ## Typical Flow (Generator Pattern)
 
-1. **Browse** — `browse_templates` → use `message` tool to send each `messagesMarkdown` item in order → final assistant reply is `NO_REPLY` → user picks a `Template ID` when ready
+1. **Browse** — `browse_templates` → execute returned `messageToolCalls` in order → final assistant reply is `NO_REPLY` → user picks a `Template ID` when ready
 2. **Upload** — User provides an image (must be in workspace `~/.openclaw/workspace/`)
 3. **Generate** — Call `generate_preview` → get taskId → immediately proceed to step 4
 4. **Poll** — Call `get_generation_status` with `poll=true` → wait for COMPLETED
-5. **Display** — Use `message` tool to send preview **as media** (`localImagePath`) + `replyMarkdown` verbatim → final assistant reply is `NO_REPLY`
+5. **Display** — execute returned `messageToolCalls` in order → final assistant reply is `NO_REPLY`
 
 ## Tool Reference
 
@@ -175,12 +175,12 @@ The agent should use `replyMarkdown` as the final text reply content.
 
 ```text
 User: "I want to make a custom gift for my friend"
-→ browse_templates → send each returned browse message directly
+→ browse_templates → execute returned `messageToolCalls`
 → user picks → generate_preview → get_generation_status --poll
 → use `message` tool to send preview image as media + `replyMarkdown` → return `NO_REPLY`
 
 User: "Turn this photo into a phone case"
-→ browse_templates --category phone → send each returned browse message directly → user picks
+→ browse_templates --category phone → execute returned `messageToolCalls` → user picks
 → generate_preview → get_generation_status --poll
 → use `message` tool to send preview image as media + `replyMarkdown` → return `NO_REPLY`
 
@@ -196,6 +196,13 @@ User: "Show me what products I can customize"
   "deliveryMode": "message_tool_sequential",
   "format": "multi_message_markdown",
   "messageCount": 1,
+  "messageToolCalls": [
+    {
+      "action": "send",
+      "channel": "feishu",
+      "message": "## Men's Hoodie\n…"
+    }
+  ],
   "feishuImagesResolved": false,
   "messagesMarkdown": [
     "## Men's Hoodie\n…\n**Template ID:** `3`\n**Price:** **$29.9 USD**\n\n![Men's Hoodie](https://...)"
@@ -203,7 +210,7 @@ User: "Show me what products I can customize"
   "finalAssistantReply": "NO_REPLY"
 }
 ```
-→ Agent uses `message` tool to send each `messagesMarkdown` item as its own message, verbatim, then returns `NO_REPLY` (`feishuImagesResolved` is diagnostic only).
+→ Agent executes `messageToolCalls` exactly, then returns `NO_REPLY` (`messagesMarkdown` / `feishuImagesResolved` are diagnostic only).
 
 ### generate_preview --json
 ```json
@@ -224,9 +231,22 @@ User: "Show me what products I can customize"
   "localImagePath": "/Users/.../.openclaw/workspace/previews/leewow_preview_task_xxx.jpg",
   "replyMarkdown": "你的定制效果图出来啦 🎉\\n\\n🛒 点击下单购买: https://...",
   "deliveryMode": "message_tool_media_then_text",
+  "messageToolCalls": [
+    {
+      "action": "send",
+      "channel": "feishu",
+      "filePath": "/Users/.../.openclaw/workspace/previews/leewow_preview_task_xxx.jpg",
+      "message": ""
+    },
+    {
+      "action": "send",
+      "channel": "feishu",
+      "message": "你的定制效果图出来啦 🎉\\n\\n🛒 点击下单购买: https://..."
+    }
+  ],
   "finalAssistantReply": "NO_REPLY"
 }
 ```
-→ Agent uses `message` tool to send `localImagePath` as media attachment + `replyMarkdown` as text, then returns `NO_REPLY`.
+→ Agent executes `messageToolCalls` exactly, then returns `NO_REPLY`.
 
-Version Marker: custom-gift-leewow@1.0.14
+Version Marker: custom-gift-leewow@1.0.15

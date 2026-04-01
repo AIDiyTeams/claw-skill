@@ -179,6 +179,14 @@ def browse_templates_payload(category: str = None, count: int = 5, channel: str 
         "deliveryMode": "message_tool_sequential",
         "messageCount": len(messages),
         "messagesMarkdown": messages,
+        "messageToolCalls": [
+            {
+                "action": "send",
+                "channel": channel,
+                "message": message,
+            }
+            for message in messages
+        ],
         "feishuImagesResolved": feishu_images_resolved,
         "finalAssistantReply": "NO_REPLY",
     }

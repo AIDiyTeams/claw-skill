@@ -97,6 +97,24 @@ def get_task_status(task_id: str, download_image: bool = True) -> dict:
             purchase_url=out["purchaseUrl"],
         )
         out["deliveryMode"] = "message_tool_media_then_text"
+        calls = []
+        if out.get("localImagePath"):
+            calls.append(
+                {
+                    "action": "send",
+                    "channel": "feishu",
+                    "filePath": out["localImagePath"],
+                    "message": "",
+                }
+            )
+        calls.append(
+            {
+                "action": "send",
+                "channel": "feishu",
+                "message": out["replyMarkdown"],
+            }
+        )
+        out["messageToolCalls"] = calls
         out["finalAssistantReply"] = "NO_REPLY"
 
     elif status == "FAILED":
@@ -106,6 +124,13 @@ def get_task_status(task_id: str, download_image: bool = True) -> dict:
             error_message=out["errorMessage"],
         )
         out["deliveryMode"] = "message_tool_text_only"
+        out["messageToolCalls"] = [
+            {
+                "action": "send",
+                "channel": "feishu",
+                "message": out["replyMarkdown"],
+            }
+        ]
         out["finalAssistantReply"] = "NO_REPLY"
     else:
         out["replyMarkdown"] = _build_pending_reply_markdown(
@@ -114,6 +139,13 @@ def get_task_status(task_id: str, download_image: bool = True) -> dict:
             status=status,
         )
         out["deliveryMode"] = "message_tool_text_only"
+        out["messageToolCalls"] = [
+            {
+                "action": "send",
+                "channel": "feishu",
+                "message": out["replyMarkdown"],
+            }
+        ]
         out["finalAssistantReply"] = "NO_REPLY"
 
     return out
