@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "browse_templates",
-      "description": "Browse Leewow product templates. Python handles channel-specific rendering and returns a ready-to-send payload. For Feishu this is a markdown table intended for interactive-card delivery. Send the returned content directly; do NOT fan out template covers as separate media messages.",
+      "description": "Browse Leewow product templates. Python handles channel-specific rendering and returns a ready-to-send payload. FEISHU OVERRIDE: browse results MUST be sent as exactly one markdown table message with the images inside the table cells. Send the returned content directly; do NOT fan out template covers as separate media messages, and do NOT cite preview-image media rules for browse results.",
       "executor": "bash",
       "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}} --channel '{{channel}}'",
       "parameters": {
@@ -60,7 +60,7 @@
     },
     {
       "name": "get_generation_status",
-      "description": "Check generation task status. When COMPLETED, returns JSON with localImagePath (workspace preview image) and purchaseUrl (signed order link). CRITICAL: You MUST send the preview image to the user as a media attachment, and include the purchaseUrl in the text. Do NOT just describe the product — send the actual image file.",
+      "description": "Check generation task status. When COMPLETED, returns JSON with localImagePath (workspace preview image) and purchaseUrl (signed order link). CRITICAL: the media-attachment rule applies here only for the generated preview image. Send the preview image to the user as a media attachment, and include the purchaseUrl in the text. Do NOT use this rule to change browse_templates table output.",
       "executor": "bash",
       "command": "python3 scripts/get_status.py '{{task_id}}' {{#if poll}}--poll{{/if}} --timeout {{timeout}} --json",
       "parameters": {

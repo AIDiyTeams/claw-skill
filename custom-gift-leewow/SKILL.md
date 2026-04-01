@@ -1,6 +1,6 @@
 ---
 name: custom-gift-leewow
-version: 1.0.3
+version: 1.0.4
 description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
@@ -18,6 +18,10 @@ homepage: https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
 
 > ClawHub rate-limited? Install directly from GitHub:
 > `https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow`
+
+> Feishu browse rule: product browsing MUST be shown as one markdown table with
+> the images inside the table. Do NOT split browse results into standalone image
+> messages.
 
 ## Install Fallback
 
@@ -59,6 +63,18 @@ Create personalized gifts and custom products powered by AI. This skill provides
 
 Do **not** unpack the browse result into multiple image messages unless the user explicitly asks for separate images.
 
+## Priority Rule
+
+For the current production channel (`feishu`):
+- `browse_templates` MUST be displayed as one markdown table message
+- The table MUST keep the `Image` column and the images must stay inside the table cells
+- The agent MUST NOT explain that "the skill does not require a table" because the current skill explicitly requires the browse result to stay in table form
+- The agent MUST NOT cite the generated-preview media rule as justification for changing the browse layout
+
+Important distinction:
+- `browse_templates` = one table message with images in the table
+- `get_generation_status` = generated preview image sent as media attachment
+
 ## Channel Design
 
 This skill now follows a channel-extension design:
@@ -95,7 +111,9 @@ Example:
 
 **Rules for Step 1:**
 - MUST keep the browse result in table form
+- MUST send exactly one browse message for the table unless the user explicitly asks for a different format
 - MUST preserve the `Template ID` column
+- MUST preserve the `Image` column with image markdown inside the table
 - SHOULD keep the preview link column as fallback when Feishu thumbnail rendering is inconsistent
 - Do NOT convert the browse result into one-message-per-image unless the user asks
 - Do NOT rewrite the returned layout for the current channel unless the user explicitly asks to change the presentation
@@ -129,6 +147,8 @@ Example:
 ### Common Mistakes to AVOID
 
 ❌ Breaking `browse_templates` into many standalone image messages when the intended result is a table
+❌ Claiming that the skill doc does not require a table for browse results
+❌ Applying the generated-preview media rule to `browse_templates`
 ❌ Using `![image](local_path)` markdown for generated preview images — local paths still need media sending
 ❌ Just saying "完成啦！" and describing the product in text without sending the generated preview image
 ❌ Omitting the purchase/order link
