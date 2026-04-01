@@ -1,6 +1,6 @@
 ---
 name: custom-gift-leewow
-version: 1.0.9
+version: 1.0.10
 description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
@@ -59,7 +59,7 @@ Create personalized gifts and custom products powered by AI. This skill provides
 `browse_templates` now returns a **Feishu-friendly Markdown table**:
 - The first column is a remote image thumbnail
 - Each row includes name, price, template ID, and a preview link
-- Send the table output **directly as text** so OpenClaw/Feishu can render it as an interactive card
+- The agent should send the returned table output **directly as text** so OpenClaw/Feishu can render it as an interactive card
 
 Do **not** unpack the browse result into multiple image messages unless the user explicitly asks for separate images.
 
@@ -75,7 +75,7 @@ For the current production channel (`feishu`):
 
 Important distinction:
 - `browse_templates` = one table message with images in the table
-- `get_generation_status` = generated preview image sent as media attachment
+- `get_generation_status` = generated preview image sent as media attachment, then `replyMarkdown` sent as text
 
 ## Verbatim Contract
 
@@ -140,10 +140,11 @@ Example:
 After `get_generation_status` returns COMPLETED, the JSON contains:
 - `localImagePath` — preview image in workspace
 - `purchaseUrl` — signed purchase/order page link
+- `replyMarkdown` — final text message content for the agent to send
 
 You MUST:
 1. **Send the preview image as a media attachment** using `localImagePath`
-2. **Send the purchase link** in the text message
+2. **Send `replyMarkdown` exactly as returned** in the text message
 
 Example:
 
@@ -158,7 +159,7 @@ Example:
 
 **Rules for Step 2:**
 - MUST send the preview image as media — this is the whole point
-- MUST include the purchase link (it's pre-signed with skid/sig)
+- MUST send the returned `replyMarkdown` without paraphrasing
 - Do NOT just describe the product in text — the user needs to SEE the image
 
 ### Common Mistakes to AVOID
@@ -229,7 +230,7 @@ python3 scripts/get_status.py {taskId} --presign --json
 2. **Upload** — User provides an image (must be in workspace `~/.openclaw/workspace/`)
 3. **Generate** — Call `generate_preview` → get taskId → immediately proceed to step 4
 4. **Poll** — Call `get_generation_status` with `poll=true` → wait for COMPLETED
-5. **Display (Step 2)** — **Send preview image as media** (`localImagePath`) + text with PURCHASE LINK (`purchaseUrl`)
+5. **Display (Step 2)** — **Send preview image as media** (`localImagePath`) + then send `replyMarkdown` exactly as returned
 
 ## Tool Reference
 
@@ -279,6 +280,7 @@ Options:
 - `--json`: Output JSON format
 
 **Returns**: Generation status and local image path (if completed).
+The agent should use `replyMarkdown` as the final text reply content.
 
 ## Safety Rules
 
@@ -293,12 +295,12 @@ Options:
 User: "I want to make a custom gift for my friend"
 → browse_templates → send the returned table directly
 → user picks → generate_preview → get_generation_status --poll
-→ send preview image as media + purchaseUrl in text
+→ send preview image as media + send `replyMarkdown` directly
 
 User: "Turn this photo into a phone case"
 → browse_templates --category phone → send the returned table directly → user picks
 → generate_preview → get_generation_status --poll
-→ send preview image as media + purchaseUrl in text
+→ send preview image as media + send `replyMarkdown` directly
 
 User: "Show me what products I can customize"
 → browse_templates → send the returned table
@@ -320,8 +322,7 @@ User: "Show me what products I can customize"
   "taskId": "task_xxx",
   "status": "PENDING",
   "estimatedSeconds": 45,
-  "templateId": 3,
-  "_success": true
+  "templateId": 3
 }
 ```
 
@@ -331,9 +332,10 @@ User: "Show me what products I can customize"
   "taskId": "task_xxx",
   "status": "COMPLETED",
   "purchaseUrl": "https://leewow.com/claw/preview/gen_xxx?skid=...&sig=...",
-  "localImagePath": "/Users/.../.openclaw/workspace/previews/leewow_preview_task_xxx.jpg"
+  "localImagePath": "/Users/.../.openclaw/workspace/previews/leewow_preview_task_xxx.jpg",
+  "replyMarkdown": "你的定制效果图出来啦 🎉\\n\\n🛒 点击下单购买: https://..."
 }
 ```
-→ Agent sends `localImagePath` as media attachment + `purchaseUrl` in text.
+→ Agent sends `localImagePath` as media attachment + `replyMarkdown` as text.
 
-Version Marker: custom-gift-leewow@1.0.9
+Version Marker: custom-gift-leewow@1.0.10

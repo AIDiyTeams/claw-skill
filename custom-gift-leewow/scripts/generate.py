@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upload image to COS, call /claw/generate, output structured JSON."""
+"""Upload image to COS, call /claw/generate, output structured JSON for agent follow-up."""
 
 import argparse
 import json
@@ -73,10 +73,10 @@ def generate_preview(image_path: str, template_id: int,
 
 
 def _safe_result(result: dict) -> dict:
-    """Build safe output: only taskId, status, estimatedSeconds, templateId, purchaseUrl.
+    """Build safe output for the agent.
 
-    purchaseUrl: previewUrl + skid + sig per ClawPreviewAuthController (claw-preview HMAC).
-    The agent MUST call get_generation_status to get the localImagePath.
+    The browse step returns final markdown directly. Generate returns task state only,
+    so the agent can continue to poll with get_generation_status.
     """
     if "error" in result:
         return result
@@ -89,9 +89,6 @@ def _safe_result(result: dict) -> dict:
         "status": result.get("status", "PENDING"),
         "estimatedSeconds": result.get("estimatedSeconds", 45),
         "templateId": result.get("templateId"),
-        "_next": f"MUST call get_generation_status(task_id='{task_id}', poll=true) "
-                 f"to get the preview image (localImagePath). "
-                 f"Send purchaseUrl below to the user together with the image.",
     }
 
     if preview_url and CLAW_SK:

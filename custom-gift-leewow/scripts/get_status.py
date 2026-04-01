@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-"""Query generation task status and output structured JSON.
+"""Query generation task status and output structured JSON for agent sending.
 
 API response structure (GET /claw/task/{taskId}):
 {
@@ -91,9 +91,24 @@ def get_task_status(task_id: str, download_image: bool = True) -> dict:
 
         preview_url = f"{CLAW_PREVIEW_BASE_URL}/{task_id}"
         out["purchaseUrl"] = sign_url(CLAW_SK, preview_url)
+        out["replyMarkdown"] = _build_completed_reply_markdown(
+            task_id=out["taskId"],
+            template_id=out.get("templateId"),
+            purchase_url=out["purchaseUrl"],
+        )
 
     elif status == "FAILED":
         out["errorMessage"] = raw.get("errorMessage", "Unknown error")
+        out["replyMarkdown"] = _build_failed_reply_markdown(
+            task_id=out["taskId"],
+            error_message=out["errorMessage"],
+        )
+    else:
+        out["replyMarkdown"] = _build_pending_reply_markdown(
+            task_id=out["taskId"],
+            template_id=out.get("templateId"),
+            status=status,
+        )
 
     return out
 
@@ -142,6 +157,35 @@ def poll_until_complete(task_id: str, timeout: int = 120, download_image: bool =
         time.sleep(5)
 
     return {"error": f"Timeout after {timeout}s", "taskId": task_id, "status": "TIMEOUT"}
+
+
+def _build_completed_reply_markdown(task_id: str, template_id, purchase_url: str) -> str:
+    lines = [
+        "你的定制效果图出来啦 🎉",
+        f"🛒 点击下单购买: {purchase_url}",
+        f"📦 模板ID: {template_id or '?'} | 任务ID: {task_id}",
+        "",
+        "喜欢吗？如果想调整或者试试其他产品，告诉我！",
+    ]
+    return "\n".join(lines)
+
+
+def _build_failed_reply_markdown(task_id: str, error_message: str) -> str:
+    return (
+        f"## 生成失败 ❌\n\n"
+        f"**任务ID**: `{task_id}`\n"
+        f"**原因**: {error_message}\n\n"
+        f"可以换张图片或者换个模板再试一次。"
+    )
+
+
+def _build_pending_reply_markdown(task_id: str, template_id, status: str) -> str:
+    return (
+        f"## 正在生成中 ⏳\n\n"
+        f"**任务ID**: `{task_id}` | **模板**: #{template_id or '?'}\n"
+        f"**状态**: {status}\n\n"
+        f"请稍等，正在努力生成效果图..."
+    )
 
 
 if __name__ == "__main__":

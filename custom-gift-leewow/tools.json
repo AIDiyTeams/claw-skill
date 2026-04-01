@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "browse_templates",
-      "description": "Browse Leewow product templates. Python returns the final user-facing markdown table. FEISHU HARD RULE: your next assistant message MUST equal the returned browse_templates content verbatim, as exactly one markdown table message with the images inside the table cells. Do NOT add text before it, after it, or rewrite it. Do NOT say 'browse_templates returned/generated a table' or summarize what the table contains. Do NOT fan out template covers as separate media messages, and do NOT cite preview-image media rules for browse results.",
+      "description": "Browse Leewow product templates. Python returns the final user-facing markdown table. The agent should send that markdown directly as the browse reply. FEISHU HARD RULE: your next assistant message MUST equal the returned browse_templates content verbatim, as exactly one markdown table message with the images inside the table cells. Do NOT add text before it, after it, or rewrite it. Do NOT say 'browse_templates returned/generated a table' or summarize what the table contains. Do NOT fan out template covers as separate media messages, and do NOT cite preview-image media rules for browse results.",
       "executor": "bash",
       "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}} --channel '{{channel}}'",
       "parameters": {
@@ -30,7 +30,7 @@
     },
     {
       "name": "generate_preview",
-      "description": "Upload a design image and start generation. Returns only taskId — no image or URL. You MUST then call get_generation_status(task_id, poll=true) to get the preview image and signed purchase link. Do NOT fabricate or guess any URL — only use purchaseUrl from get_generation_status.",
+      "description": "Upload a design image and start generation. Returns task state only. Then call get_generation_status(task_id, poll=true) to get the preview image path plus the final reply markdown. Do NOT fabricate or guess any URL — only use purchaseUrl/replyMarkdown from get_generation_status.",
       "executor": "bash",
       "command": "python3 scripts/generate.py --image-path '{{image_path}}' --template-id {{template_id}} --design-theme '{{design_theme}}' --aspect-ratio '{{aspect_ratio}}' --json",
       "parameters": {
@@ -60,7 +60,7 @@
     },
     {
       "name": "get_generation_status",
-      "description": "Check generation task status. When COMPLETED, returns JSON with localImagePath (workspace preview image) and purchaseUrl (signed order link). CRITICAL: the media-attachment rule applies here only for the generated preview image. Send the preview image to the user as a media attachment, and include the purchaseUrl in the text. Do NOT use this rule to change browse_templates table output.",
+      "description": "Check generation task status. Returns JSON with replyMarkdown and, when completed, localImagePath plus purchaseUrl. The agent should send localImagePath as media only for the generated preview image, then send replyMarkdown as the text reply. Do NOT use this rule to change browse_templates table output.",
       "executor": "bash",
       "command": "python3 scripts/get_status.py '{{task_id}}' {{#if poll}}--poll{{/if}} --timeout {{timeout}} --json",
       "parameters": {
