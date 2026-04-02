@@ -6,8 +6,11 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
 import sys
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from urllib.parse import urlparse
 
 # Load environment variables from ~/.openclaw/.env
@@ -37,6 +40,8 @@ CLAW_SK = os.getenv("CLAW_SK", "")
 
 WORKSPACE_DIR = os.path.expanduser("~/.openclaw/workspace")
 TEMPLATE_IMG_DIR = os.path.join(WORKSPACE_DIR, "template_images")
+DEFERRED_BATCH_DIR = os.path.join(WORKSPACE_DIR, "deferred_feishu_batches")
+DEFAULT_SYNC_SEND_COUNT = 3
 
 
 def _download_cover_image(remote_url: str, template_id) -> str | None:
@@ -180,6 +185,96 @@ def _prepare_feishu_cards_parallel(
 
     return [r for r in results if r is not None], any_changed
 
+
+def _send_cards_sequentially(client: FeishuDirectClient, plans: list[dict]) -> list[str]:
+    message_ids: list[str] = []
+    for plan in plans:
+        message_ids.append(client.send_card(plan["card"]))
+    return message_ids
+
+
+def _sync_send_count(total: int) -> int:
+    if total <= 0:
+        return 0
+    raw = os.getenv("LEEWOW_BROWSE_SYNC_SEND_COUNT", str(DEFAULT_SYNC_SEND_COUNT)).strip()
+    try:
+        count = int(raw)
+    except ValueError:
+        count = DEFAULT_SYNC_SEND_COUNT
+    return max(1, min(total, count))
+
+
+def _spawn_deferred_card_sender(
+    plans: list[dict],
+    app_id: str,
+    app_secret: str,
+    receive_id: str,
+    receive_id_type: str,
+    domain: str,
+) -> str | None:
+    if not plans:
+        return None
+
+    os.makedirs(DEFERRED_BATCH_DIR, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        suffix=".json",
+        prefix="browse_cards_",
+        dir=DEFERRED_BATCH_DIR,
+        delete=False,
+    ) as handle:
+        json.dump(
+            {
+                "receive_id": receive_id,
+                "receive_id_type": receive_id_type,
+                "domain": domain,
+                "cards": [plan["card"] for plan in plans],
+            },
+            handle,
+            ensure_ascii=False,
+        )
+        batch_file = handle.name
+
+    child_env = os.environ.copy()
+    child_env["FEISHU_APP_ID"] = app_id
+    child_env["FEISHU_APP_SECRET"] = app_secret
+    child_env["FEISHU_RECEIVE_ID"] = receive_id
+    child_env["FEISHU_RECEIVE_ID_TYPE"] = receive_id_type
+    child_env["FEISHU_OPEN_BASE"] = domain
+
+    subprocess.Popen(
+        [sys.executable, os.path.abspath(__file__), "--send-card-batch-file", batch_file],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        close_fds=True,
+        start_new_session=True,
+        env=child_env,
+    )
+    return batch_file
+
+
+def _send_card_batch_file(batch_file: str) -> int:
+    payload = json.loads(Path(batch_file).read_text(encoding="utf-8"))
+    client = FeishuDirectClient(
+        app_id=os.getenv("FEISHU_APP_ID", ""),
+        app_secret=os.getenv("FEISHU_APP_SECRET", ""),
+        receive_id=str(payload.get("receive_id") or os.getenv("FEISHU_RECEIVE_ID") or ""),
+        receive_id_type=str(payload.get("receive_id_type") or os.getenv("FEISHU_RECEIVE_ID_TYPE") or "chat_id"),
+        domain=str(payload.get("domain") or os.getenv("FEISHU_OPEN_BASE") or "https://open.feishu.cn"),
+    )
+    try:
+        cards = payload.get("cards") or []
+        for card in cards:
+            client.send_card(card)
+        return 0
+    finally:
+        try:
+            os.remove(batch_file)
+        except OSError:
+            pass
+
 def browse_templates_payload(category: str = None, count: int = 5, channel: str = "feishu", params: dict | None = None) -> dict:
     """Direct-send browse cards on Feishu and return send results."""
     rows = _build_browse_items(category=category, count=count)
@@ -204,15 +299,28 @@ def browse_templates_payload(category: str = None, count: int = 5, channel: str 
     )
 
     plans, feishu_images_resolved = _prepare_feishu_cards_parallel(rows, client)
-    message_ids: list[str] = []
-    for plan in plans:
-        message_ids.append(client.send_card(plan["card"]))
+    sync_count = _sync_send_count(len(plans))
+    immediate_plans = plans[:sync_count]
+    deferred_plans = plans[sync_count:]
+
+    message_ids = _send_cards_sequentially(client, immediate_plans)
+    _spawn_deferred_card_sender(
+        deferred_plans,
+        app_id=app_id,
+        app_secret=app_secret,
+        receive_id=receive_id,
+        receive_id_type=receive_id_type,
+        domain=domain,
+    )
 
     return {
         "ok": True,
         "channel": channel,
         "mode": "direct_feishu_send",
-        "messageCount": len(message_ids),
+        "messageCount": len(plans),
+        "immediateMessageCount": len(message_ids),
+        "deferredMessageCount": len(deferred_plans),
+        "deferredBatchScheduled": bool(deferred_plans),
         "messageIds": message_ids,
         "feishuImagesResolved": feishu_images_resolved,
         "finalAssistantReply": "NO_REPLY",
@@ -259,9 +367,12 @@ if __name__ == "__main__":
     parser.add_argument("--feishu-app-id", type=str, default=None)
     parser.add_argument("--feishu-app-secret", type=str, default=None)
     parser.add_argument("--feishu-open-base", type=str, default=None)
+    parser.add_argument("--send-card-batch-file", type=str, default=None)
     args = parser.parse_args()
 
-    if args.raw_json:
+    if args.send_card_batch_file:
+        raise SystemExit(_send_card_batch_file(args.send_card_batch_file))
+    elif args.raw_json:
         print(json.dumps(browse_templates_json(category=args.category, count=args.count), ensure_ascii=False, indent=2))
     elif args.json:
         print(

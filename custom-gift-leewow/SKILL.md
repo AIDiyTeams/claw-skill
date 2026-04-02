@@ -1,6 +1,6 @@
 ---
 name: custom-gift-leewow
-version: 1.0.23
+version: 1.0.24
 description: >-
   Help users quickly find desirable customizable products, turn images or ideas
   into gifts, and get highly flexible personalized customization services.
@@ -270,4 +270,4 @@ User: "看看有啥能定制的"
 ```
 → Python sends one preview result card directly. Agent returns `NO_REPLY`.
 
-Version Marker: custom-gift-leewow@1.0.23
+Version Marker: custom-gift-leewow@1.0.24
