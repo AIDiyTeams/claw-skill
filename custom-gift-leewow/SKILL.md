@@ -1,6 +1,6 @@
 ---
 name: custom-gift-leewow
-version: 1.0.22
+version: 1.0.23
 description: >-
   Help users quickly find desirable customizable products, turn images or ideas
   into gifts, and get highly flexible personalized customization services.
@@ -42,12 +42,8 @@ Leewow 在这个 skill 里的角色很简单：
 
 ## Trigger Priority
 
-For browse-style requests, `browse_templates` is the first step.
-
-When the user is asking what can be customized, which products are available, or which templates they can choose from:
-- call `browse_templates` first
-- wait for the browse result
-- only use a broad Leewow capability summary if `browse_templates` fails
+For browse-style requests, `browse_templates` is the default first step.
+Use a broad Leewow capability summary only if `browse_templates` fails.
 
 > ClawHub rate-limited? Install directly from GitHub:
 > `https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow`
@@ -78,7 +74,7 @@ Create personalized gifts and custom products powered by AI. This skill provides
 
 ## What the agent does (keep it minimal)
 
-**Browse** — `browse_templates` sends Feishu product cards directly from Python and returns only send results. If the tool succeeds, reply with **`NO_REPLY`**. The current conversation target should be passed in as `feishu_target`; do not ask the user to provide it manually if it is available from the current Feishu context.
+**Browse** — `browse_templates` sends product cards directly from Python and returns only send results. If the tool succeeds, reply with **`NO_REPLY`**. In normal chat usage, pass the current Feishu conversation target as `feishu_target`.
 
 **Preview** — `get_generation_status` sends the generated preview result directly to Feishu from Python and returns only send results. If the tool succeeds, reply with **`NO_REPLY`**. Preview result cards intentionally use a different layout from browse cards.
 
@@ -89,7 +85,7 @@ Create personalized gifts and custom products powered by AI. This skill provides
 - `FEISHU_APP_ID` — Feishu App ID (often referred to together with App Secret as app AK/SK)
 - `FEISHU_APP_SECRET` — Feishu App Secret
 - Obtain them from your Feishu Open Platform app settings page
-- `FEISHU_RECEIVE_ID` — default Feishu target for this skill to send into
+- `FEISHU_RECEIVE_ID` — fallback Feishu target for this skill
 - `FEISHU_RECEIVE_ID_TYPE` — optional, defaults to `chat_id`
 - `CLAW_BASE_URL` — API base URL (default: `https://leewow.com`)
 - `CLAW_PATH_PREFIX` — Path prefix (default: `/v2` for leewow.com)
@@ -114,9 +110,8 @@ LEEWOW_API_BASE=https://leewow.com
 ```
 
 Prefer runtime target passing:
-- When the agent already knows the current Feishu conversation target, it should pass that value as `feishu_target`
-- Do **not** ask the user for the current chat id if the conversation context already provides it
-- `FEISHU_RECEIVE_ID` is only a fallback for environments where the current conversation target cannot be inferred automatically
+- when the current Feishu conversation target is already known, pass it as `feishu_target`
+- `FEISHU_RECEIVE_ID` is only a fallback
 
 ## Image Requirements (IMPORTANT)
 
@@ -168,11 +163,7 @@ Options:
 - `--category`: Filter by category (bag, accessory, home, apparel)
 - `--count`: Number of products to return (1-10, default 5)
 - `--json`: Direct-send to Feishu and return send result JSON
-- `--feishu-target`: Optional target override
-- `--feishu-receive-id-type`: Optional target type override
-- `--feishu-app-id`: Optional app id override
-- `--feishu-app-secret`: Optional app secret override
-- `--feishu-open-base`: Optional Open API base override
+- `--feishu-target`: Current Feishu conversation target. In normal use, treat this as required.
 - `--raw-json`: Debug mode that returns raw template data
 
 ### generate_preview
@@ -206,6 +197,7 @@ Options:
 - `--timeout`: Poll timeout in seconds (default 120)
 - `--no-download`: Skip downloading preview image
 - `--json`: Output JSON format
+- `--feishu-target`: Current Feishu conversation target. In normal use, treat this as required.
 
 **Returns**: Generation status and, in direct-send mode, send result JSON.
 
@@ -233,8 +225,7 @@ User: "Show me what products I can customize"
 → browse_templates → Python sends product cards directly → `NO_REPLY`
 
 User: "看看有啥能定制的"
-→ MUST call browse_templates first
-→ Do NOT answer with a generic list like 文创定制 / 数字产品定制 / 供应链定制
+→ browse_templates first
 ```
 
 ## Output Structure
@@ -279,4 +270,4 @@ User: "看看有啥能定制的"
 ```
 → Python sends one preview result card directly. Agent returns `NO_REPLY`.
 
-Version Marker: custom-gift-leewow@1.0.21
+Version Marker: custom-gift-leewow@1.0.23
