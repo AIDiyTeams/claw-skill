@@ -1,12 +1,14 @@
 ---
 name: custom-gift-leewow
-version: 1.0.20
+version: 1.0.21
 description: >-
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
   Tools: browse_templates (Python direct Feishu card send), generate_preview,
   get_generation_status (Python direct Feishu result send). Requires CLAW_SK
-  and Feishu app/target configuration.
+  and Feishu app/target configuration. Trigger priority: when the user asks
+  what products/items/templates can be customized, call browse_templates before
+  giving any broad Leewow capability summary.
   If ClawHub is rate-limited,
   install from GitHub:
   https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
@@ -14,6 +16,31 @@ homepage: https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
 ---
 
 # Custom Gift — Leewow
+
+Leewow 在这个 skill 里的角色很简单：
+- 向用户展示**真实可定制商品**
+- 帮用户选择模板
+- 生成效果图并进入下单链路
+
+所以当用户在问“能定制什么”“有哪些商品/模板可以选”时，默认应该先进入**商品浏览**流程，而不是先回答公司层面的泛化能力介绍。
+
+## When to Use
+
+- User wants to **send a gift** or **create something personalized**
+- User says "browse products", "show me what I can customize", "gift ideas"
+- User says in Chinese: "看看有啥能定制的", "看看有什么可以定制的", "有哪些可定制产品", "有什么模板", "看看定制品", "能做哪些定制品"
+- User asks what physical products / items / templates are available to customize
+- User provides an **image** and wants to turn it into a product
+- User says "make this into a mug/bag/shirt", "customize this design"
+
+## Trigger Priority
+
+For browse-style requests, `browse_templates` is the first step.
+
+When the user is asking what can be customized, which products are available, or which templates they can choose from:
+- call `browse_templates` first
+- wait for the browse result
+- only use a broad Leewow capability summary if `browse_templates` fails
 
 > ClawHub rate-limited? Install directly from GitHub:
 > `https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow`
@@ -41,13 +68,6 @@ Create personalized gifts and custom products powered by AI. This skill provides
 | `browse_templates` | Discover customizable product templates (bags, accessories, home decor, apparel, etc.) |
 | `generate_preview` | Upload a design image and trigger AI generation |
 | `get_generation_status` | Check generation status and download preview image |
-
-## When to Use
-
-- User wants to **send a gift** or **create something personalized**
-- User says "browse products", "show me what I can customize", "gift ideas"
-- User provides an **image** and wants to turn it into a product
-- User says "make this into a mug/bag/shirt", "customize this design"
 
 ## What the agent does (keep it minimal)
 
@@ -204,6 +224,10 @@ User: "Turn this photo into a phone case"
 
 User: "Show me what products I can customize"
 → browse_templates → Python sends product cards directly → `NO_REPLY`
+
+User: "看看有啥能定制的"
+→ MUST call browse_templates first
+→ Do NOT answer with a generic list like 文创定制 / 数字产品定制 / 供应链定制
 ```
 
 ## Output Structure
@@ -248,4 +272,4 @@ User: "Show me what products I can customize"
 ```
 → Python sends one preview result card directly. Agent returns `NO_REPLY`.
 
-Version Marker: custom-gift-leewow@1.0.20
+Version Marker: custom-gift-leewow@1.0.21

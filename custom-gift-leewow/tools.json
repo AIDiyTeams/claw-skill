@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "browse_templates",
-      "description": "Fetch customizable product templates and send Feishu cards directly from Python. Returns only send results plus finalAssistantReply=NO_REPLY. This tool requires CLAW_SK and Feishu direct-send configuration (FEISHU_APP_ID, FEISHU_APP_SECRET, optional fallback FEISHU_RECEIVE_ID / FEISHU_RECEIVE_ID_TYPE). The agent should pass feishu_target from the current conversation when available, should not ask the user for it if already known from context, and should not restyle or resend browse content after a successful call.",
+      "description": "Primary entrypoint when the user asks what products/items/templates can be customized. Use this before any broad Leewow capability summary. Python sends real product cards to Feishu directly and returns only send results plus finalAssistantReply=NO_REPLY.",
       "executor": "bash",
       "command": "python3 scripts/browse.py --category '{{category}}' --count {{count}} --channel '{{channel}}' --json --feishu-target '{{feishu_target}}' --feishu-receive-id-type '{{feishu_receive_id_type}}' --feishu-app-id '{{feishu_app_id}}' --feishu-app-secret '{{feishu_app_secret}}' --feishu-open-base '{{feishu_open_base}}'",
       "parameters": {
