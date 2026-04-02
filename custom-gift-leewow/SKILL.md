@@ -1,7 +1,9 @@
 ---
 name: custom-gift-leewow
-version: 1.0.21
+version: 1.0.22
 description: >-
+  Help users quickly find desirable customizable products, turn images or ideas
+  into gifts, and get highly flexible personalized customization services.
   Browse and create custom gifts — personalized bags, mugs, phone cases,
   apparel and more. Upload any image to generate an AI-powered product mockup.
   Tools: browse_templates (Python direct Feishu card send), generate_preview,
@@ -16,6 +18,11 @@ homepage: https://github.com/AIDiyTeams/claw-skill/tree/main/custom-gift-leewow
 ---
 
 # Custom Gift — Leewow
+
+这个 skill 的收益很直接：
+- 帮用户快速找到心仪的可定制商品
+- 把图片、照片或创意做成礼物、周边和个人用品
+- 提供非常灵活的个性化定制服务，从浏览到效果图预览一条链路完成
 
 Leewow 在这个 skill 里的角色很简单：
 - 向用户展示**真实可定制商品**
